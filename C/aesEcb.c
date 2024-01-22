@@ -62,7 +62,6 @@ u_int8_t RconMatrix[255] = {
         0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33,
         0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb
 };
-
 u_int8_t getRconValue(int index) {
     return RconMatrix[index];
 }
@@ -91,6 +90,9 @@ const u_int8_t subBytesMatrix[256] = {
         0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9 ,0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf, // E
         0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6 ,0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16  // F
 };
+u_int8_t getSubBytesValue(int index) {
+    return subBytesMatrix[index];
+}
 
 const u_int8_t invSubBytesMatrix[256] = {
 //  0     1     2     3     4     5     6     7     8     9     A     B     C     D     E     F
@@ -112,8 +114,8 @@ const u_int8_t invSubBytesMatrix[256] = {
         0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26 ,0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d  // F
 };
 
-u_int8_t getSubBytesValue(int index) {
-    return subBytesMatrix[index];
+u_int8_t getInvSubBytesValue(int index) {
+    return invSubBytesMatrix[index];
 }
 
 void subBytes(u_int8_t* block) {
@@ -144,7 +146,7 @@ void invSubBytes(u_int8_t* block) {
 
     */
     for(int index = 0; index < 16; ++index) {
-        block[index] = invSubBytesMatrix[block[index]];
+        block[index] = getInvSubBytesValue(block[index]);
     }
 }
 
@@ -184,11 +186,11 @@ void invShiftRows(u_int8_t* block) {
     */
 
     for(int rowIndex = 0; rowIndex < 4; ++rowIndex) {
-        const int tmp = block[(rowIndex * 4) + 3];
-        for(int columnIndex = 3; columnIndex > 0; --columnIndex) {
-            block[(rowIndex * 4) + columnIndex] = block[(rowIndex * 4) + columnIndex - 1];
+        u_int8_t tmp[4] = {0};
+        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+            tmp[columnIndex] = block[rowIndex * 4 + (columnIndex + 4 - rowIndex) % 4];
         }
-        block[(rowIndex * 4)] = tmp;
+        memcpy(block + rowIndex * 4, tmp, 4);
     }
 }
 
@@ -240,6 +242,38 @@ void mixColumns(u_int8_t* block) {
             u_int8_t value = 0;
             for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
                 value ^= galois_multiplication(initialBlock[(indexColumnVariant * 4) + indexColumn], mixColumnsMatrix[indexRow][indexColumnVariant]);
+            }
+            block[indexRow * 4 + indexColumn] = value;
+        }
+    }
+}
+
+const u_int8_t invMixColumnsMatrix[4][4] = {
+        {0x0e, 0x0b, 0x0d, 0x09},
+        {0x09, 0x0e, 0x0b, 0x0d},
+        {0x0d, 0x09, 0x0e, 0x0b},
+        {0x0b, 0x0d, 0x09, 0x0e}
+};
+
+void invMixColumns(u_int8_t* block) {
+    /*
+
+    Multiply each column of the block by a fixed matrix (a block must be 128 bits)
+
+    01 02 03 04     -->       19  14  17  20
+    05 06 07 08               47  42  45  48
+    09 10 11 12               75  70  73  76
+    13 14 15 16              103  98 101 104
+    */
+
+    u_int8_t initialBlock[16];
+    memcpy(initialBlock, block, 16);
+
+    for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
+        for(int indexRow = 0; indexRow < 4; ++indexRow) {
+            u_int8_t value = 0;
+            for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
+                value ^= galois_multiplication(initialBlock[(indexColumnVariant * 4) + indexColumn], invMixColumnsMatrix[indexRow][indexColumnVariant]);
             }
             block[indexRow * 4 + indexColumn] = value;
         }
@@ -308,6 +342,29 @@ void addRoundKey(u_int8_t* block, u_int8_t* completeKey, int indexRound) {
 // ***********************
 
 char* decrypt(u_int8_t* cipherText, u_int8_t* key, int cipherTextSize, int keySize) {
+    if (keySize != KEY_SIZE) {
+        return 0;
+    }
+    if (cipherTextSize != BLOCK_SIZE) {
+        return 0;
+    }
+
+    // 1. Expand the key
+    u_int8_t* completeKey = expandKey(key, 10);
+
+    // 2. AddRoundKey
+    addRoundKey(cipherText, completeKey, 10);
+
+    // 2. Rounds
+    for(int indexRound = 9; indexRound >= 0; --indexRound) {
+        invShiftRows(cipherText);
+        invSubBytes(cipherText);
+        addRoundKey(cipherText, completeKey, indexRound);
+        if (indexRound != 0) {
+            invMixColumns(cipherText);
+        }
+    }
+
     return 0;
 }
 
@@ -340,14 +397,30 @@ char* encrypt(u_int8_t* plainText, u_int8_t* key, int plainTextSize, int keySize
 
 int main() {
     u_int8_t block[16] = { 0x32, 0x88, 0x31, 0xe0, 0x43, 0x5a, 0x31, 0x37, 0xf6, 0x30, 0x98, 0x07, 0xa8, 0x8d, 0xa2, 0x34 };
+    const u_int8_t initialBlock[16] = { 0x32, 0x88, 0x31, 0xe0, 0x43, 0x5a, 0x31, 0x37, 0xf6, 0x30, 0x98, 0x07, 0xa8, 0x8d, 0xa2, 0x34 };
     u_int8_t key[16] = { 0x2b, 0x28, 0xab, 0x09, 0x7e, 0xae, 0xf7, 0xcf, 0x15, 0xd2, 0x15, 0x4f, 0x16, 0xa6, 0x88, 0x3c };
 
     encrypt(block, key, BLOCK_SIZE, KEY_SIZE);
-
+    printf("Encrypted block : \n");
     for(int index = 0; index < 16; ++index) {
         printf("%02x ", block[index]);
     }
-    printf("\n");
+    printf("\n\n");
+
+    decrypt(block, key, BLOCK_SIZE, KEY_SIZE);
+    printf("Decrypted block : \n");
+    for(int index = 0; index < 16; ++index) {
+        printf("%02x ", block[index]);
+    }
+    printf("\n\n");
+
+    // Check that the block is the same as the initial block
+    for(int index = 0; index < 16; ++index) {
+        if (block[index] != initialBlock[index]) {
+            printf("Error : block is not the same as the initial block\n");
+            return 1;
+        }
+    }
 
     return 0;
 }
