@@ -10,20 +10,23 @@ AES ECB Encryption
 ========================
 
 Source : 
-    - Operations : https://www.youtube.com/watch?v=O4xNJsjtN6E
+    - Debug : https://www.cryptool.org/en/cto/aes-step-by-step
+    - Operations :  
+        - https://www.youtube.com/watch?v=O4xNJsjtN6E
+        - https://en.wikipedia.org/wiki/Advanced_Encryption_Standard
+        - https://engineering.purdue.edu/kak/compsec/NewLectures/Lecture8.pdf
     - Implementation : https://github.com/m3y54m/aes-in-c/blob/main/src/main.c#L452
     - AddRoundKey : https://en.wikipedia.org/wiki/AES_key_schedule
 
 Operations in a round :
-    1. XOR
-    2. SubBytes : Substitude each byte with another byte according to a lookup table
-    3. ShiftRows : Shift each row one by one (1st row by 0, 2nd row by 1, 3rd row by 2, 4th row by 3)
+    1. SubBytes : Substitude each byte with another byte according to a lookup table
+    2. ShiftRows : Shift each row one by one (1st row by 0, 2nd row by 1, 3rd row by 2, 4th row by 3)
         1234 = 1234 (1st row)
         1234 = 2341 (2nd row)
         1234 = 3412 (3rd row)
         1234 = 4123 (4th row)
-    4. MixColumns (not last round) : Each column is multiplied by a fixed matrix
-    5. AddRoundKey
+    3. MixColumns (not last round) : Each column is multiplied by a fixed matrix
+    4. AddRoundKey
 
 Number of rounds :
     10 for 128 bit key
@@ -187,6 +190,26 @@ void mixColumns(unsigned char* block) {
         }
     }
 }
+
+// ***********************
+// AddRoundKey
+// ***********************
+
+void xor(unsigned char* block, unsigned char* key) {
+    block = *block ^ *key;
+}
+
+unsigned char* keyExpansion(unsigned char* key) {
+    return;
+}
+
+void addRoundKey(unsigned char* block, unsigned char* key) {
+    
+}
+
+// ***********************
+// Encryption & Decryption
+// ***********************
 
 char* decrypt(char* cipherText, char* key, int cipherTextSize, int keySize) {
     return;
