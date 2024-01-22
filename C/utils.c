@@ -5,6 +5,22 @@ ECB
 
 Test :
 
+- SubBytes
+
+int main() {
+    unsigned char block[16] = {'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p'};
+    subBytes(block);
+    for(int i = 0; i < 16; ++i) {
+        printf("%c ", block[i]);
+    }
+    invSubBytes(block);
+    printf("\n");
+    for(int i = 0; i < 16; ++i) {
+        printf("%c ", block[i]);
+    }
+    return 0;
+}
+
 - ShiftRows
 
 int main() {
