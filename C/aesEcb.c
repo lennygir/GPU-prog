@@ -96,25 +96,25 @@ void mixColumns(char* block) {
 
     Multiply each column of the block by a fixed matrix (a block must be 128 bits)
 
-    01 02 03 04     -->       39   46   53   60
-    05 06 07 08              101  114  127  140
-    09 10 11 12              403  458  513  568
-    13 14 15 16              985 1118 1251 1384
+    01 02 03 04     -->       19  14  17  20
+    05 06 07 08               47  42  45  48
+    09 10 11 12               75  70  73  76
+    13 14 15 16              103  98 101 104
     */
 
     char initialBlock[16];
     strcpy(initialBlock, block);
 
     for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
-        int value = 0;
         for(int indexRow = 0; indexRow < 4; ++indexRow) {
-            value += initialBlock[(indexRow * 4) + indexColumn] * mixColumnsMatrix[indexRow][indexColumn];
+            int value = 0;
+            for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
+                value += initialBlock[(indexRow * 4) + indexColumnVariant] * mixColumnsMatrix[indexColumnVariant][indexColumn];
+            }
+            block[indexRow * 4 + indexColumn] = value;
         }
-        block[indexColumn] = value;
     }
 }
-
-
 
 char* decrypt(char* cipherText, char* key, int cipherTextSize, int keySize) {
     return;
