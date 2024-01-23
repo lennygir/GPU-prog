@@ -173,9 +173,12 @@ void shiftRows(u_int8_t* block) {
     for(int rowIndex = 0; rowIndex < 4; ++rowIndex) {
         u_int8_t tmp[4] = {0};
         for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
-            tmp[columnIndex] = block[rowIndex * 4 + (columnIndex + rowIndex) % 4];
+            tmp[columnIndex] = block[(rowIndex * 5 + columnIndex * 4) % 16];
         }
-        memcpy(block + rowIndex * 4, tmp, 4);
+
+        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+            block[columnIndex * 4 + rowIndex] = tmp[columnIndex];
+        }
     }
 }
 
@@ -193,9 +196,13 @@ void invShiftRows(u_int8_t* block) {
     for(int rowIndex = 0; rowIndex < 4; ++rowIndex) {
         u_int8_t tmp[4] = {0};
         for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
-            tmp[columnIndex] = block[rowIndex * 4 + (columnIndex + 4 - rowIndex) % 4];
+            const int index = columnIndex * 4 + rowIndex;
+            tmp[columnIndex] = block[(16 + index - rowIndex * 4) % 16];
         }
-        memcpy(block + rowIndex * 4, tmp, 4);
+
+        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+            block[columnIndex * 4 + rowIndex] = tmp[columnIndex];
+        }
     }
 }
 
@@ -246,9 +253,9 @@ void mixColumns(u_int8_t* block) {
         for(int indexRow = 0; indexRow < 4; ++indexRow) {
             u_int8_t value = 0;
             for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
-                value ^= galois_multiplication(initialBlock[(indexColumnVariant * 4) + indexColumn], mixColumnsMatrix[indexRow][indexColumnVariant]);
+                value ^= galois_multiplication(initialBlock[indexColumnVariant + (indexColumn * 4)], mixColumnsMatrix[indexRow][indexColumnVariant]);
             }
-            block[indexRow * 4 + indexColumn] = value;
+            block[indexRow + indexColumn * 4] = value;
         }
     }
 }
@@ -278,9 +285,9 @@ void invMixColumns(u_int8_t* block) {
         for(int indexRow = 0; indexRow < 4; ++indexRow) {
             u_int8_t value = 0;
             for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
-                value ^= galois_multiplication(initialBlock[(indexColumnVariant * 4) + indexColumn], invMixColumnsMatrix[indexRow][indexColumnVariant]);
+                value ^= galois_multiplication(initialBlock[indexColumnVariant + (indexColumn * 4)], invMixColumnsMatrix[indexRow][indexColumnVariant]);
             }
-            block[indexRow * 4 + indexColumn] = value;
+            block[indexRow + indexColumn * 4] = value;
         }
     }
 }
@@ -316,13 +323,11 @@ Aes128KeyExpanded expandKey(Aes128Key baseKey, const int nbRounds) {
             if (indexColumn == 0) {
                 u_int8_t tmp[4] = {0};
                 for(int indexRow = 0; indexRow < 4; ++indexRow) {
-                    int index = 3 + indexRow * 4;
-
                     // 1. Rotate the word
                     if (indexRow != 3) {
-                        tmp[indexRow] = previousKey[index + 4];
+                        tmp[indexRow] = previousKey[12 + indexRow + 1];
                     } else {
-                        tmp[indexRow] = previousKey[index - 12];
+                        tmp[indexRow] = previousKey[12];
                     }
 
                     // 2. SubBytes
@@ -332,15 +337,13 @@ Aes128KeyExpanded expandKey(Aes128Key baseKey, const int nbRounds) {
                 tmp[0] = tmp[0] ^ getRconValue(indexRound);
 
                 for(int indexRow = 0; indexRow < 4; ++indexRow) {
-                    int indexInKey = indexRow * 4 + indexColumn;
-
-                    key[indexInKey] = previousKey[indexInKey] ^ tmp[indexRow];
+                    key[indexRow] = previousKey[indexRow] ^ tmp[indexRow];
                 }
             } else {
                 for(int indexRow = 0; indexRow < 4; ++indexRow) {
-                    int indexInKey = indexRow * 4 + indexColumn;
+                    int indexInKey = indexRow + indexColumn * 4;
 
-                    key[indexInKey] = previousKey[indexInKey] ^ key[indexInKey - 1];
+                    key[indexInKey] = previousKey[indexInKey] ^ key[indexInKey - 4];
                 }
             }
 
@@ -359,7 +362,6 @@ void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeKey, int ind
             block[index] = block[index] ^ key[index];
         }
     }
-
 }
 
 // ***********************
@@ -423,22 +425,22 @@ void encrypt(Aes128Block plainText, Aes128Key key, int plainTextSize, int keySiz
 Aes128Block generateBlock() {
     Aes128Block block = malloc(BLOCK_SIZE);
 
-    block[0] = 0x32;
-    block[1] = 0x88;
-    block[2] = 0x31;
-    block[3] = 0xe0;
-    block[4] = 0x43;
-    block[5] = 0x5a;
-    block[6] = 0x31;
-    block[7] = 0x37;
-    block[8] = 0xf6;
-    block[9] = 0x30;
-    block[10] = 0x98;
-    block[11] = 0x07;
-    block[12] = 0xa8;
-    block[13] = 0x8d;
-    block[14] = 0xa2;
-    block[15] = 0x34;
+    block[0] = 0x46;
+    block[1] = 0x72;
+    block[2] = 0x6f;
+    block[3] = 0x6d;
+    block[4] = 0x20;
+    block[5] = 0x57;
+    block[6] = 0x69;
+    block[7] = 0x6b;
+    block[8] = 0x69;
+    block[9] = 0x70;
+    block[10] = 0x65;
+    block[11] = 0x64;
+    block[12] = 0x69;
+    block[13] = 0x61;
+    block[14] = 0x2c;
+    block[15] = 0x20;
 
     return block;
 }
@@ -450,20 +452,23 @@ Aes128Key generateKey() {
     Aes128Key key = malloc(KEY_SIZE);
 
     key[0] = 0x2b;
-    key[1] = 0x28;
-    key[2] = 0xab;
-    key[3] = 0x09;
     key[4] = 0x7e;
-    key[5] = 0xae;
-    key[6] = 0xf7;
-    key[7] = 0xcf;
     key[8] = 0x15;
-    key[9] = 0xd2;
-    key[10] = 0x15;
-    key[11] = 0x4f;
     key[12] = 0x16;
+
+    key[1] = 0x28;
+    key[5] = 0xae;
+    key[9] = 0xd2;
     key[13] = 0xa6;
+
+    key[2] = 0xab;
+    key[6] = 0xf7;
+    key[10] = 0x15;
     key[14] = 0x88;
+
+    key[3] = 0x09;
+    key[7] = 0xcf;
+    key[11] = 0x4f;
     key[15] = 0x3c;
 
     return key;
@@ -472,7 +477,7 @@ void destroyKey(Aes128Key key) {
     free(key);
 }
 
-/*
+
 int main() {
     Aes128Block block = generateBlock();
     // Create a copy of the block
@@ -509,8 +514,8 @@ int main() {
 
     return 0;
 }
-*/
 
+/*
 int main(int argc, char** argv) {
     if(argc != 4) {
         printf("Usage : ./aesEcb <input file> <output file> <mode>\n");
@@ -562,3 +567,4 @@ int main(int argc, char** argv) {
     destroyKey(key);
     return 0;
 }
+ */
