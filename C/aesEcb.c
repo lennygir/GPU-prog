@@ -297,6 +297,12 @@ Aes128KeyExpanded createExpandedKey(const Aes128Key firstKeyBlock) {
 
     return expandedKey;
 }
+void destroyExpandedKey(Aes128KeyExpanded expandedKey) {
+    for (int index = 0; index < 11; ++index) {
+        free(expandedKey[index]);
+    }
+    free(expandedKey);
+}
 
 Aes128KeyExpanded expandKey(Aes128Key baseKey, const int nbRounds) {
     Aes128KeyExpanded keyExpanded = createExpandedKey(baseKey);
@@ -368,20 +374,22 @@ void decrypt(u_int8_t* cipherText, u_int8_t* key, int cipherTextSize, int keySiz
     }
 
     // 1. Expand the key
-    u_int8_t* completeKey = expandKey(key, 10);
+    Aes128KeyExpanded expandedKey = expandKey(key, 10);
 
     // 2. AddRoundKey
-    addRoundKey(cipherText, completeKey, 10);
+    addRoundKey(cipherText, expandedKey, 10);
 
     // 2. Rounds
     for(int indexRound = 9; indexRound >= 0; --indexRound) {
         invShiftRows(cipherText);
         invSubBytes(cipherText);
-        addRoundKey(cipherText, completeKey, indexRound);
+        addRoundKey(cipherText, expandedKey, indexRound);
         if (indexRound != 0) {
             invMixColumns(cipherText);
         }
     }
+
+    destroyExpandedKey(expandedKey);
 }
 
 void encrypt(Aes128Block plainText, Aes128Key key, int plainTextSize, int keySize) {
@@ -407,6 +415,8 @@ void encrypt(Aes128Block plainText, Aes128Key key, int plainTextSize, int keySiz
         }
         addRoundKey(plainText, expandedKey, indexRound);
     }
+
+    destroyExpandedKey(expandedKey);
 }
 
 Aes128Block generateBlock() {
@@ -464,7 +474,7 @@ void destroyKey(Aes128Key key) {
 int main() {
     Aes128Block block = generateBlock();
     // Create a copy of the block
-    const Aes128Block initialBlock = malloc(BLOCK_SIZE);
+    Aes128Block initialBlock = generateBlock();
     memcpy(initialBlock, block, BLOCK_SIZE);
 
     Aes128Key key = generateKey();
@@ -490,6 +500,10 @@ int main() {
             return 1;
         }
     }
+
+    destroyBlock(block);
+    destroyBlock(initialBlock);
+    destroyKey(key);
 
     return 0;
 }
