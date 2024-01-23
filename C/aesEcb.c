@@ -6,7 +6,7 @@
 #define KEY_SIZE 128
 
 typedef u_int8_t* Aes128Key; // 128 bits (16 bytes)
-typedef Aes128Key Aes128KeyExpanded; // 10 * 128 bits (10 * 16 bytes)
+typedef Aes128Key* Aes128KeyExpanded; // 10 * 128 bits (10 * 16 bytes)
 typedef u_int8_t* Aes128Block; // 128 bits (16 bytes)
 
 /*
@@ -288,22 +288,22 @@ void invMixColumns(u_int8_t* block) {
 // AddRoundKey
 // ***********************
 Aes128KeyExpanded createExpandedKey(const Aes128Key firstKeyBlock) {
-    Aes128KeyExpanded expandedKey = malloc(11 * 16 * sizeof(u_int8_t));
+    Aes128KeyExpanded expandedKey = malloc(11 * sizeof(Aes128Key));
+    for (int index = 0; index < 11; ++index) {
+        expandedKey[index] = malloc(16 * sizeof(u_int8_t));
+    }
 
-    memcpy(expandedKey, firstKeyBlock, 16);
+    memcpy(expandedKey[0], firstKeyBlock, 16);
 
     return expandedKey;
-}
-Aes128Key getKeyBlock(Aes128KeyExpanded expandedKey, int index) {
-    return expandedKey + (index * 16);
 }
 
 Aes128KeyExpanded expandKey(Aes128Key baseKey, const int nbRounds) {
     Aes128KeyExpanded keyExpanded = createExpandedKey(baseKey);
 
     for(int indexRound = 1; indexRound <= nbRounds; ++indexRound) {
-        Aes128Key key = getKeyBlock(keyExpanded, indexRound);
-        Aes128Key previousKey = getKeyBlock(keyExpanded, indexRound - 1);
+        Aes128Key key = keyExpanded[indexRound];
+        Aes128Key previousKey = keyExpanded[indexRound - 1];
 
         for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
             if (indexColumn == 0) {
@@ -344,7 +344,7 @@ Aes128KeyExpanded expandKey(Aes128Key baseKey, const int nbRounds) {
 }
 
 void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeKey, int indexRound) {
-    Aes128Key key = getKeyBlock(completeKey, indexRound);
+    Aes128Key key = completeKey[indexRound];
 
     for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
         for(int indexRow = 0; indexRow < 4; ++indexRow) {
