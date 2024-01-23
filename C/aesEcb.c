@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/types.h>
 
-#define BLOCK_SIZE 128
-#define KEY_SIZE 128
+#define BLOCK_SIZE 16
+#define KEY_SIZE 16
 
 typedef u_int8_t* Aes128Key; // 128 bits (16 bytes)
 typedef Aes128Key* Aes128KeyExpanded; // 10 * 128 bits (10 * 16 bytes)
@@ -471,6 +472,7 @@ void destroyKey(Aes128Key key) {
     free(key);
 }
 
+/*
 int main() {
     Aes128Block block = generateBlock();
     // Create a copy of the block
@@ -505,5 +507,58 @@ int main() {
     destroyBlock(initialBlock);
     destroyKey(key);
 
+    return 0;
+}
+*/
+
+int main(int argc, char** argv) {
+    if(argc != 4) {
+        printf("Usage : ./aesEcb <input file> <output file> <mode>\n");
+        return 1;
+    }
+
+    FILE* file = fopen(argv[1], "r");
+    if(file == NULL) {
+        printf("Error : cannot open file %s\n", argv[1]);
+        return 1;
+    }
+    FILE* outputFile = fopen(argv[2], "w");
+
+    fseek(file, 0, SEEK_END); // seek to end of file
+    long fileSizeInByte = ftell(file); // get current file pointer
+    fseek(file, 0, SEEK_SET); // seek back to beginning of file
+
+    Aes128Key key = generateKey();
+
+    if(strcmp(argv[3], "encrypt") == 0) {
+        while(!feof(file)) {
+            Aes128Block block = malloc(BLOCK_SIZE);
+            int indexByte = 0;
+            while(indexByte < BLOCK_SIZE && !feof(file)) {
+                block[indexByte] = fgetc(file);
+                ++indexByte;
+            }
+            encrypt(block, key, BLOCK_SIZE, KEY_SIZE);
+            for(int indexByte = 0; indexByte < BLOCK_SIZE; ++indexByte) {
+                fputc(block[indexByte], outputFile);
+            }
+        }
+    } else if(strcmp(argv[3], "decrypt") == 0) {
+        while(!feof(file)) {
+            Aes128Block block = malloc(BLOCK_SIZE);
+            int indexByte = 0;
+            while(indexByte < BLOCK_SIZE && !feof(file)) {
+                block[indexByte] = fgetc(file);
+                ++indexByte;
+            }
+            decrypt(block, key, BLOCK_SIZE, KEY_SIZE);
+            for(int indexByte = 0; indexByte < BLOCK_SIZE; ++indexByte) {
+                fputc(block[indexByte], outputFile);
+            }
+        }
+    }
+    fclose(file);
+    fclose(outputFile);
+    destroyKey(key);
     return 0;
 }
