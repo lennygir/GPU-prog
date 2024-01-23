@@ -5,6 +5,10 @@
 #define BLOCK_SIZE 128
 #define KEY_SIZE 128
 
+typedef u_int8_t* Aes128Key; // 128 bits (16 bytes)
+typedef Aes128Key Aes128KeyExpanded; // 10 * 128 bits (10 * 16 bytes)
+typedef u_int8_t* Aes128Block; // 128 bits (16 bytes)
+
 /*
 ========================
 AES ECB Encryption
@@ -283,21 +287,35 @@ void invMixColumns(u_int8_t* block) {
 // ***********************
 // AddRoundKey
 // ***********************
-u_int8_t* expandKey(const u_int8_t* key, const int nbRounds) {
-    u_int8_t* completeKey = (u_int8_t*)malloc((nbRounds + 1) * KEY_SIZE);
-    memcpy(completeKey, key, KEY_SIZE / 8);
+Aes128KeyExpanded createExpandedKey(const Aes128Key firstKeyBlock) {
+    Aes128KeyExpanded expandedKey = malloc(11 * 16 * sizeof(u_int8_t));
+
+    memcpy(expandedKey, firstKeyBlock, 16);
+
+    return expandedKey;
+}
+Aes128Key getKeyBlock(Aes128KeyExpanded expandedKey, int index) {
+    return expandedKey + (index * 16);
+}
+
+Aes128KeyExpanded expandKey(Aes128Key baseKey, const int nbRounds) {
+    Aes128KeyExpanded keyExpanded = createExpandedKey(baseKey);
+
     for(int indexRound = 1; indexRound <= nbRounds; ++indexRound) {
+        Aes128Key key = getKeyBlock(keyExpanded, indexRound);
+        Aes128Key previousKey = getKeyBlock(keyExpanded, indexRound - 1);
+
         for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
             if (indexColumn == 0) {
                 u_int8_t tmp[4] = {0};
                 for(int indexRow = 0; indexRow < 4; ++indexRow) {
-                    int index = (indexRound * 16) - 16 + 3 + indexRow * 4;
+                    int index = 3 + indexRow * 4;
 
                     // 1. Rotate the word
                     if (indexRow != 3) {
-                        tmp[indexRow] = completeKey[index + 4];
+                        tmp[indexRow] = previousKey[index + 4];
                     } else {
-                        tmp[indexRow] = completeKey[index - 12];
+                        tmp[indexRow] = previousKey[index - 12];
                     }
 
                     // 2. SubBytes
@@ -307,31 +325,31 @@ u_int8_t* expandKey(const u_int8_t* key, const int nbRounds) {
                 tmp[0] = tmp[0] ^ getRconValue(indexRound);
 
                 for(int indexRow = 0; indexRow < 4; ++indexRow) {
-                    int indexWordByte = indexRound * 16 + indexRow * 4 + indexColumn;
-                    int indexFirstWordByte = indexWordByte - 16; // go back from one block
+                    int indexInKey = indexRow * 4 + indexColumn;
 
-                    completeKey[indexWordByte] = completeKey[indexFirstWordByte] ^ tmp[indexRow];
+                    key[indexInKey] = previousKey[indexInKey] ^ tmp[indexRow];
                 }
             } else {
                 for(int indexRow = 0; indexRow < 4; ++indexRow) {
-                    int indexWordByte = indexRound * 16 + indexRow * 4 + indexColumn;
-                    int indexFirstWordByte = indexWordByte - 16; // go back from one block
-                    int indexSecondWordByte = indexWordByte - 1;
+                    int indexInKey = indexRow * 4 + indexColumn;
 
-                    completeKey[indexWordByte] = completeKey[indexFirstWordByte] ^ completeKey[indexSecondWordByte];
+                    key[indexInKey] = previousKey[indexInKey] ^ key[indexInKey - 1];
                 }
             }
 
         }
     }
-    return completeKey;
+
+    return keyExpanded;
 }
 
-void addRoundKey(u_int8_t* block, u_int8_t* completeKey, int indexRound) {
+void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeKey, int indexRound) {
+    Aes128Key key = getKeyBlock(completeKey, indexRound);
 
     for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
         for(int indexRow = 0; indexRow < 4; ++indexRow) {
-            block[indexRow * 4 + indexColumn] = block[indexRow * 4 + indexColumn] ^ completeKey[indexRound * 16 + indexRow * 4 + indexColumn];
+            const int index = indexRow * 4 + indexColumn;
+            block[index] = block[index] ^ key[index];
         }
     }
 
@@ -341,12 +359,12 @@ void addRoundKey(u_int8_t* block, u_int8_t* completeKey, int indexRound) {
 // Encryption & Decryption
 // ***********************
 
-char* decrypt(u_int8_t* cipherText, u_int8_t* key, int cipherTextSize, int keySize) {
+void decrypt(u_int8_t* cipherText, u_int8_t* key, int cipherTextSize, int keySize) {
     if (keySize != KEY_SIZE) {
-        return 0;
+        return;
     }
     if (cipherTextSize != BLOCK_SIZE) {
-        return 0;
+        return;
     }
 
     // 1. Expand the key
@@ -364,23 +382,21 @@ char* decrypt(u_int8_t* cipherText, u_int8_t* key, int cipherTextSize, int keySi
             invMixColumns(cipherText);
         }
     }
-
-    return 0;
 }
 
-char* encrypt(u_int8_t* plainText, u_int8_t* key, int plainTextSize, int keySize) {
+void encrypt(Aes128Block plainText, Aes128Key key, int plainTextSize, int keySize) {
     if (keySize != KEY_SIZE) {
-        return 0;
+        return;
     }
     if (plainTextSize != BLOCK_SIZE) {
-        return 0;
+        return;
     }
 
     // 1. Expand the key
-    u_int8_t* completeKey = expandKey(key, 10);
+    Aes128KeyExpanded expandedKey = expandKey(key, 10);
 
     // 2. AddRoundKey
-    addRoundKey(plainText, completeKey, 0);
+    addRoundKey(plainText, expandedKey, 0);
 
     // 3. Rounds
     for(int indexRound = 1; indexRound <= 10; ++indexRound) {
@@ -389,16 +405,69 @@ char* encrypt(u_int8_t* plainText, u_int8_t* key, int plainTextSize, int keySize
         if (indexRound != 10) {
             mixColumns(plainText);
         }
-        addRoundKey(plainText, completeKey, indexRound);
+        addRoundKey(plainText, expandedKey, indexRound);
     }
+}
 
-    return 0;
+Aes128Block generateBlock() {
+    Aes128Block block = malloc(BLOCK_SIZE);
+
+    block[0] = 0x32;
+    block[1] = 0x88;
+    block[2] = 0x31;
+    block[3] = 0xe0;
+    block[4] = 0x43;
+    block[5] = 0x5a;
+    block[6] = 0x31;
+    block[7] = 0x37;
+    block[8] = 0xf6;
+    block[9] = 0x30;
+    block[10] = 0x98;
+    block[11] = 0x07;
+    block[12] = 0xa8;
+    block[13] = 0x8d;
+    block[14] = 0xa2;
+    block[15] = 0x34;
+
+    return block;
+}
+void destroyBlock(Aes128Block block) {
+    free(block);
+}
+
+Aes128Key generateKey() {
+    Aes128Key key = malloc(KEY_SIZE);
+
+    key[0] = 0x2b;
+    key[1] = 0x28;
+    key[2] = 0xab;
+    key[3] = 0x09;
+    key[4] = 0x7e;
+    key[5] = 0xae;
+    key[6] = 0xf7;
+    key[7] = 0xcf;
+    key[8] = 0x15;
+    key[9] = 0xd2;
+    key[10] = 0x15;
+    key[11] = 0x4f;
+    key[12] = 0x16;
+    key[13] = 0xa6;
+    key[14] = 0x88;
+    key[15] = 0x3c;
+
+    return key;
+}
+void destroyKey(Aes128Key key) {
+    free(key);
 }
 
 int main() {
-    u_int8_t block[16] = { 0x32, 0x88, 0x31, 0xe0, 0x43, 0x5a, 0x31, 0x37, 0xf6, 0x30, 0x98, 0x07, 0xa8, 0x8d, 0xa2, 0x34 };
-    const u_int8_t initialBlock[16] = { 0x32, 0x88, 0x31, 0xe0, 0x43, 0x5a, 0x31, 0x37, 0xf6, 0x30, 0x98, 0x07, 0xa8, 0x8d, 0xa2, 0x34 };
-    u_int8_t key[16] = { 0x2b, 0x28, 0xab, 0x09, 0x7e, 0xae, 0xf7, 0xcf, 0x15, 0xd2, 0x15, 0x4f, 0x16, 0xa6, 0x88, 0x3c };
+    Aes128Block block = generateBlock();
+    // Create a copy of the block
+    const Aes128Block initialBlock = malloc(BLOCK_SIZE);
+    memcpy(initialBlock, block, BLOCK_SIZE);
+
+    Aes128Key key = generateKey();
 
     encrypt(block, key, BLOCK_SIZE, KEY_SIZE);
     printf("Encrypted block : \n");
