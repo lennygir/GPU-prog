@@ -338,41 +338,48 @@ __device__ void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeK
 // Encryption & Decryption
 // ***********************
 
-__global__ void decrypt(u_int8_t* cipherText, u_int8_t* key) {
+__global__ void decrypt(Aes128Block cipherTextBlocks, Aes128Key key) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    Aes128Block block = cipherTextBlocks + (tid * BLOCK_SIZE);
+
     // 1. Expand the key
     Aes128KeyExpanded expandedKey = expandKey(key, 10);
 
     // 2. AddRoundKey
-    addRoundKey(cipherText, expandedKey, 10);
+    addRoundKey(block, expandedKey, 10);
 
     // 2. Rounds
     for(int indexRound = 9; indexRound >= 0; --indexRound) {
-        invShiftRows(cipherText);
-        invSubBytes(cipherText);
-        addRoundKey(cipherText, expandedKey, indexRound);
+        invShiftRows(block);
+        invSubBytes(block);
+        addRoundKey(block, expandedKey, indexRound);
         if (indexRound != 0) {
-            invMixColumns(cipherText);
+            invMixColumns(block);
         }
     }
 
     destroyExpandedKey(expandedKey);
 }
 
-__global__ void encrypt(Aes128Block plainText, Aes128Key key) {
+__global__ void encrypt(Aes128Block plainTextBlocks, Aes128Key key) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+
     // 1. Expand the key
     Aes128KeyExpanded expandedKey = expandKey(key, 10);
 
+    Aes128Block block = plainTextBlocks + (tid * BLOCK_SIZE);
+
     // 2. AddRoundKey
-    addRoundKey(plainText, expandedKey, 0);
+    addRoundKey(block, expandedKey, 0);
 
     // 3. Rounds
     for(int indexRound = 1; indexRound <= 10; ++indexRound) {
-        subBytes(plainText);
-        shiftRows(plainText);
+        subBytes(block);
+        shiftRows(block);
         if (indexRound != 10) {
-            mixColumns(plainText);
+            mixColumns(block);
         }
-        addRoundKey(plainText, expandedKey, indexRound);
+        addRoundKey(block, expandedKey, indexRound);
     }
 
     destroyExpandedKey(expandedKey);
@@ -433,7 +440,41 @@ __host__ void destroyKey(Aes128Key key) {
     free(key);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    if(argc != 4) {
+        printf("Usage : ./aesEcb <input file> <output file> <encrypt | decrypt>\n");
+        return 1;
+    }
+
+    // Get input file and its size
+    FILE* file = fopen(argv[1], "r");
+    if(file == NULL) {
+        printf("Error : cannot open file %s\n", argv[1]);
+        return 1;
+    }
+    fseek(file, 0, SEEK_END); // seek to end of file
+    long fileSizeInByte = ftell(file); // get current file pointer
+    fseek(file, 0, SEEK_SET); // seek back to beginning of file
+
+    // Get data and prepare blocks
+    int nbBlocks = fileSizeInByte / BLOCK_SIZE + 1;
+
+    Aes128Block blocks = (Aes128Block)malloc(BLOCK_SIZE * nbBlocks);
+    int indexBlock = 0;
+    while(!feof(file)) {
+        int indexByte = 0;
+        Aes128Block block = blocks + (indexBlock * BLOCK_SIZE);
+        while(indexByte < BLOCK_SIZE && !feof(file)) {
+            block[indexByte] = fgetc(file);
+            ++indexByte;
+        }
+        ++indexBlock;
+    }
+
+    Aes128Block d_blocks;
+    cudaMalloc(&d_blocks, BLOCK_SIZE * nbBlocks);
+    cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
+
     // Create constant memory
     cudaMemcpyToSymbol(RconMatrix, &CPU_RconMatrix, 255 * sizeof(u_int8_t));
     cudaMemcpyToSymbol(subBytesMatrix, &CPU_subBytesMatrix, 256 * sizeof(u_int8_t));
@@ -441,28 +482,39 @@ int main() {
     cudaMemcpyToSymbol(mixColumnsMatrix, &CPU_mixColumnsMatrix, 4 * 4 * sizeof(u_int8_t));
     cudaMemcpyToSymbol(invMixColumnsMatrix, &CPU_invMixColumnsMatrix, 4 * 4 * sizeof(u_int8_t));
 
-    Aes128Block block = generateBlock();
     Aes128Key key = generateKey();
 
-    Aes128Block d_block;
-    cudaMalloc(&d_block, BLOCK_SIZE);
-    cudaMemcpy(d_block, block, BLOCK_SIZE, cudaMemcpyHostToDevice);
     Aes128Key d_key;
     cudaMalloc(&d_key, KEY_SIZE);
     cudaMemcpy(d_key, key, KEY_SIZE, cudaMemcpyHostToDevice);
 
-    encrypt<<<1,1>>>(d_block, d_key);
-    cudaMemcpy(block, d_block, BLOCK_SIZE, cudaMemcpyDeviceToHost);
+    if(strcmp(argv[3], "encrypt") == 0) {
+        encrypt<<<1, nbBlocks>>>(d_blocks, d_key);
+    } else if(strcmp(argv[3], "decrypt") == 0) {
+        decrypt<<<1, nbBlocks>>>(d_blocks, d_key);
+    } else {
+        printf("Error : unknown command %s\n", argv[3]);
+        return 1;
+    }
+
+    cudaMemcpy(blocks, d_blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyDeviceToHost);
+
+    cudaError_t error = cudaGetLastError();
+    printf("%s\n", cudaGetErrorString(error));
 
     printf("Encrypted block: ");
-    for(int index = 0; index < BLOCK_SIZE; ++index) {
-        printf("%02x ", block[index]);
+    for(int indexBlock = 0; indexBlock < nbBlocks; ++indexBlock) {
+        Aes128Block block = blocks + (indexBlock * BLOCK_SIZE);
+        for(int indexByte = 0; indexByte < BLOCK_SIZE; ++indexByte) {
+            printf("%02x", block[indexByte]);
+        }
     }
     printf("\n");
 
-    cudaFree(d_block);
+    cudaFree(d_blocks);
     cudaFree(d_key);
 
-    destroyBlock(block);
     destroyKey(key);
+
+    fclose(file);
 }
