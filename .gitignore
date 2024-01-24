@@ -4,3 +4,13 @@
 *.ptx
 *.cubin
 *.fatbin
+
+.vscode
+
+# Extension-less files (C builds)
+*
+!/**/
+!*.*
+
+*.encrypted
+*.decrypted
