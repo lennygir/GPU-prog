@@ -464,10 +464,20 @@ int main(int argc, char** argv) {
     fseek(file, 0, SEEK_SET); // seek back to beginning of file
 
     // Get data and prepare blocks
-    int nbBlocks = fileSizeInByte / BLOCK_SIZE + 1;
+    int nbBlocks;
+
+    if(strcmp(argv[3], "encrypt") == 0) {
+        nbBlocks = fileSizeInByte / BLOCK_SIZE + 1;
+        // + 1 : 
+        //  - In case the file size is not a multiple of BLOCK_SIZE
+        //  - To store the padding size at the end
+    } else if(strcmp(argv[3], "decrypt") == 0) {
+        nbBlocks = fileSizeInByte / BLOCK_SIZE;
+    }
 
     Aes128Block blocks = (Aes128Block)malloc(BLOCK_SIZE * nbBlocks);
     int indexBlock = 0;
+    u_int8_t padding = 0;
     while(!feof(file)) {
         int indexByte = 0;
         Aes128Block block = blocks + (indexBlock * BLOCK_SIZE);
@@ -476,11 +486,15 @@ int main(int argc, char** argv) {
             ++indexByte;
         }
         ++indexBlock;
+        if(indexByte == BLOCK_SIZE) {
+            padding = 16;
+        } else {
+            padding = BLOCK_SIZE - indexByte + 1;
+        }
     }
 
     Aes128Block d_blocks;
     cudaMalloc(&d_blocks, BLOCK_SIZE * nbBlocks);
-    cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
 
     // Create constant memory
     cudaMemcpyToSymbol(RconMatrix, &CPU_RconMatrix, 255 * sizeof(u_int8_t));
@@ -496,8 +510,17 @@ int main(int argc, char** argv) {
     cudaMemcpy(d_key, key, KEY_SIZE, cudaMemcpyHostToDevice);
 
     if(strcmp(argv[3], "encrypt") == 0) {
+        // Fill the padding
+        for(int indexByte = BLOCK_SIZE * nbBlocks - padding; indexByte < BLOCK_SIZE * nbBlocks - 1; ++indexByte) {
+            blocks[indexByte] = 0;
+        }
+        blocks[BLOCK_SIZE * nbBlocks - 1] = padding;
+        padding = 0;
+
+        cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
         encrypt<<<1, nbBlocks>>>(d_blocks, d_key);
     } else if(strcmp(argv[3], "decrypt") == 0) {
+        cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
         decrypt<<<1, nbBlocks>>>(d_blocks, d_key);
     } else {
         printf("Error : unknown command %s\n", argv[3]);
@@ -506,13 +529,22 @@ int main(int argc, char** argv) {
 
     cudaMemcpy(blocks, d_blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyDeviceToHost);
 
+    if(strcmp(argv[3], "decrypt") == 0) {
+        // Get the padding size
+        padding = blocks[BLOCK_SIZE * nbBlocks - 1];
+    }
+
     // Show CUDA errors
     // cudaError_t error = cudaGetLastError();
     // printf("%s\n", cudaGetErrorString(error));
 
     for(int indexBlock = 0; indexBlock < nbBlocks; ++indexBlock) {
         Aes128Block block = blocks + (indexBlock * BLOCK_SIZE);
-        for(int indexByte = 0; indexByte < BLOCK_SIZE; ++indexByte) {
+        int blockLimit = BLOCK_SIZE;
+        if(indexBlock == nbBlocks - 1) {
+            blockLimit = BLOCK_SIZE - padding;
+        }
+        for(int indexByte = 0; indexByte < blockLimit; ++indexByte) {
             fputc(block[indexByte], outputFile);
         }
     }
