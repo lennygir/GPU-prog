@@ -446,6 +446,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Get output file
+    FILE* outputFile = fopen(argv[2], "w");
+    if(outputFile == NULL) {
+        printf("Error : cannot open file %s\n", argv[2]);
+        return 1;
+    }
+
     // Get input file and its size
     FILE* file = fopen(argv[1], "r");
     if(file == NULL) {
@@ -499,17 +506,16 @@ int main(int argc, char** argv) {
 
     cudaMemcpy(blocks, d_blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyDeviceToHost);
 
-    cudaError_t error = cudaGetLastError();
-    printf("%s\n", cudaGetErrorString(error));
+    // Show CUDA errors
+    // cudaError_t error = cudaGetLastError();
+    // printf("%s\n", cudaGetErrorString(error));
 
-    printf("Encrypted block: ");
     for(int indexBlock = 0; indexBlock < nbBlocks; ++indexBlock) {
         Aes128Block block = blocks + (indexBlock * BLOCK_SIZE);
         for(int indexByte = 0; indexByte < BLOCK_SIZE; ++indexByte) {
-            printf("%02x", block[indexByte]);
+            fputc(block[indexByte], outputFile);
         }
     }
-    printf("\n");
 
     cudaFree(d_blocks);
     cudaFree(d_key);
@@ -517,4 +523,5 @@ int main(int argc, char** argv) {
     destroyKey(key);
 
     fclose(file);
+    fclose(outputFile);
 }
