@@ -91,7 +91,7 @@ __device__ u_int8_t getInvSubBytesValue(int index) {
     return invSubBytesMatrix[index];
 }
 
-__device__ void subBytes(u_int8_t* block) {
+__global__ void subBytes(u_int8_t* block) {
     /*
 
     Substitude each byte of the block with another byte according to a lookup table (a block must be 128 bits)
@@ -102,12 +102,13 @@ __device__ void subBytes(u_int8_t* block) {
     13 14 15 16             d7 ab 76 ca
     */
 
-    for(int index = 0; index < 16; ++index) {
-        block[index] = getSubBytesValue(block[index]);
-    }
+    const int indexColumn = threadIdx.x;
+    const int indexRow = threadIdx.y;
+
+    block[4 * indexColumn + indexRow] = getSubBytesValue(block[4 * indexColumn + indexRow]);
 }
 
-__device__ void invSubBytes(u_int8_t* block) {
+__global__ void invSubBytes(u_int8_t* block) {
     /*
 
     Substitude each byte of the block with the initial byte according to a lookup table (a block must be 128 bits)
@@ -118,16 +119,18 @@ __device__ void invSubBytes(u_int8_t* block) {
     d7 ab 76 ca             13 14 15 16
 
     */
-    for(int index = 0; index < 16; ++index) {
-        block[index] = getInvSubBytesValue(block[index]);
-    }
+
+    const int indexColumn = threadIdx.x;
+    const int indexRow = threadIdx.y;
+
+    block[4 * indexColumn + indexRow] = getInvSubBytesValue(block[4 * indexColumn + indexRow]);
 }
 
 // ***********************
 // ShiftRows
 // ***********************
 
-__device__ void shiftRows(u_int8_t* block) {
+__global__ void shiftRows(u_int8_t* block) {
     /*
 
     Shift each line of the block from right to left (a block must be 128 bits)
@@ -138,19 +141,19 @@ __device__ void shiftRows(u_int8_t* block) {
     13 14 15 16             16 13 14 15
     */
 
-    for(int rowIndex = 0; rowIndex < 4; ++rowIndex) {
-        u_int8_t tmp[4] = {0};
-        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
-            tmp[columnIndex] = block[(rowIndex * 5 + columnIndex * 4) % 16];
-        }
+    const int rowIndex = threadIdx.x;
+    
+    u_int8_t tmp[4] = {0};
+    for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+        tmp[columnIndex] = block[(rowIndex * 5 + columnIndex * 4) % 16];
+    }
 
-        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
-            block[columnIndex * 4 + rowIndex] = tmp[columnIndex];
-        }
+    for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+        block[columnIndex * 4 + rowIndex] = tmp[columnIndex];
     }
 }
 
-__device__ void invShiftRows(u_int8_t* block) {
+__global__ void invShiftRows(u_int8_t* block) {
     /*
 
     Shift each line of the block from left to right (a block must be 128 bits)
@@ -161,16 +164,16 @@ __device__ void invShiftRows(u_int8_t* block) {
     13 14 15 16             16 13 14 15
     */
 
-    for(int rowIndex = 0; rowIndex < 4; ++rowIndex) {
-        u_int8_t tmp[4] = {0};
-        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
-            const int index = columnIndex * 4 + rowIndex;
-            tmp[columnIndex] = block[(16 + index - rowIndex * 4) % 16];
-        }
+    const int rowIndex = threadIdx.x;
 
-        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
-            block[columnIndex * 4 + rowIndex] = tmp[columnIndex];
-        }
+    u_int8_t tmp[4] = {0};
+    for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+        const int index = columnIndex * 4 + rowIndex;
+        tmp[columnIndex] = block[(16 + index - rowIndex * 4) % 16];
+    }
+
+    for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+        block[columnIndex * 4 + rowIndex] = tmp[columnIndex];
     }
 }
 
@@ -204,7 +207,7 @@ u_int8_t CPU_mixColumnsMatrix[4][4] = {
         {0x03, 0x01, 0x01, 0x02}
 };
 
-__device__ void mixColumns(u_int8_t* block) {
+__global__ void mixColumns(u_int8_t* block) {
     /*
 
     Multiply each column of the block by a fixed matrix (a block must be 128 bits)
@@ -218,15 +221,14 @@ __device__ void mixColumns(u_int8_t* block) {
     u_int8_t initialBlock[16];
     memcpy(initialBlock, block, 16);
 
-    for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
-        for(int indexRow = 0; indexRow < 4; ++indexRow) {
-            u_int8_t value = 0;
-            for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
-                value ^= galois_multiplication(initialBlock[indexColumnVariant + (indexColumn * 4)], mixColumnsMatrix[indexRow][indexColumnVariant]);
-            }
-            block[indexRow + indexColumn * 4] = value;
-        }
+    const int indexColumn = threadIdx.x;
+    const int indexRow = threadIdx.y;
+
+    u_int8_t value = 0;
+    for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
+        value ^= galois_multiplication(initialBlock[indexColumnVariant + (indexColumn * 4)], mixColumnsMatrix[indexRow][indexColumnVariant]);
     }
+    block[indexRow + indexColumn * 4] = value;
 }
 
 __constant__ u_int8_t invMixColumnsMatrix[4][4];
@@ -237,7 +239,7 @@ u_int8_t CPU_invMixColumnsMatrix[4][4] = {
         {0x0b, 0x0d, 0x09, 0x0e}
 };
 
-__device__ void invMixColumns(u_int8_t* block) {
+__global__ void invMixColumns(u_int8_t* block) {
     /*
 
     Multiply each column of the block by a fixed matrix (a block must be 128 bits)
@@ -251,15 +253,14 @@ __device__ void invMixColumns(u_int8_t* block) {
     u_int8_t initialBlock[16];
     memcpy(initialBlock, block, 16);
 
-    for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
-        for(int indexRow = 0; indexRow < 4; ++indexRow) {
-            u_int8_t value = 0;
-            for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
-                value ^= galois_multiplication(initialBlock[indexColumnVariant + (indexColumn * 4)], invMixColumnsMatrix[indexRow][indexColumnVariant]);
-            }
-            block[indexRow + indexColumn * 4] = value;
-        }
+    const int indexColumn = threadIdx.x;
+    const int indexRow = threadIdx.y;
+
+    u_int8_t value = 0;
+    for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
+        value ^= galois_multiplication(initialBlock[indexColumnVariant + (indexColumn * 4)], invMixColumnsMatrix[indexRow][indexColumnVariant]);
     }
+    block[indexRow + indexColumn * 4] = value;
 }
 
 // ***********************
@@ -323,15 +324,14 @@ __device__ Aes128KeyExpanded expandKey(Aes128Key baseKey, const int nbRounds) {
     return keyExpanded;
 }
 
-__device__ void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeKey, int indexRound) {
+__global__ void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeKey, int indexRound) {
     Aes128Key key = completeKey[indexRound];
 
-    for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
-        for(int indexRow = 0; indexRow < 4; ++indexRow) {
-            const int index = indexRow * 4 + indexColumn;
-            block[index] = block[index] ^ key[index];
-        }
-    }
+    const int indexColumn = threadIdx.x;
+    const int indexRow = threadIdx.y;
+
+    const int index = indexRow * 4 + indexColumn;
+    block[index] = block[index] ^ key[index];
 }
 
 // ***********************
@@ -342,19 +342,21 @@ __global__ void decrypt(Aes128Block cipherTextBlocks, Aes128Key key) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     Aes128Block block = cipherTextBlocks + (tid * BLOCK_SIZE);
 
+    dim3 dimBlock(4,4);
+
     // 1. Expand the key
     Aes128KeyExpanded expandedKey = expandKey(key, 10);
 
     // 2. AddRoundKey
-    addRoundKey(block, expandedKey, 10);
+    addRoundKey<<<1, dimBlock>>>(block, expandedKey, 10);
 
     // 2. Rounds
     for(int indexRound = 9; indexRound >= 0; --indexRound) {
-        invShiftRows(block);
-        invSubBytes(block);
-        addRoundKey(block, expandedKey, indexRound);
+        invShiftRows<<<1,4>>>(block);
+        invSubBytes<<<1, dimBlock>>>(block);
+        addRoundKey<<<1, dimBlock>>>(block, expandedKey, indexRound);
         if (indexRound != 0) {
-            invMixColumns(block);
+            invMixColumns<<<1, dimBlock>>>(block);
         }
     }
 
@@ -364,22 +366,24 @@ __global__ void decrypt(Aes128Block cipherTextBlocks, Aes128Key key) {
 __global__ void encrypt(Aes128Block plainTextBlocks, Aes128Key key) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
+    dim3 dimBlock(4,4);
+    
     // 1. Expand the key
     Aes128KeyExpanded expandedKey = expandKey(key, 10);
 
     Aes128Block block = plainTextBlocks + (tid * BLOCK_SIZE);
 
     // 2. AddRoundKey
-    addRoundKey(block, expandedKey, 0);
+    addRoundKey<<<1, dimBlock>>>(block, expandedKey, 0);
 
     // 3. Rounds
     for(int indexRound = 1; indexRound <= 10; ++indexRound) {
-        subBytes(block);
-        shiftRows(block);
+        subBytes<<<1, dimBlock>>>(block);
+        shiftRows<<<1,4>>>(block);
         if (indexRound != 10) {
-            mixColumns(block);
+            mixColumns<<<1, dimBlock>>>(block);
         }
-        addRoundKey(block, expandedKey, indexRound);
+        addRoundKey<<<1, dimBlock>>>(block, expandedKey, indexRound);
     }
 
     destroyExpandedKey(expandedKey);
