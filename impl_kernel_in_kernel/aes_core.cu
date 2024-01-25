@@ -338,8 +338,13 @@ __global__ void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeK
 // Encryption & Decryption
 // ***********************
 
-__global__ void decrypt(Aes128Block cipherTextBlocks, Aes128Key key) {
+__global__ void decrypt(Aes128Block cipherTextBlocks, Aes128Key key, int nbAesBlocks) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if(tid >= nbAesBlocks) {
+        return;
+    }
+
     Aes128Block block = cipherTextBlocks + (tid * BLOCK_SIZE);
 
     dim3 dimBlock(4,4);
@@ -363,8 +368,12 @@ __global__ void decrypt(Aes128Block cipherTextBlocks, Aes128Key key) {
     destroyExpandedKey(expandedKey);
 }
 
-__global__ void encrypt(Aes128Block plainTextBlocks, Aes128Key key) {
+__global__ void encrypt(Aes128Block plainTextBlocks, Aes128Key key, int nbAesBlocks) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if(tid >= nbAesBlocks) {
+        return;
+    }
 
     dim3 dimBlock(4,4);
     
@@ -523,6 +532,16 @@ int main(int argc, char** argv) {
     cudaMalloc(&d_key, KEY_SIZE);
     cudaMemcpy(d_key, key, KEY_SIZE, cudaMemcpyHostToDevice);
 
+    int nbCudaBlocks = 1;
+    int nbThreadsPerBlock = nbBlocks;
+    if(nbBlocks > 512) {
+        nbCudaBlocks = nbBlocks / 512;
+        if(nbBlocks % 512 != 0) {
+            ++nbCudaBlocks;
+        }
+        nbThreadsPerBlock = 512;
+    }
+
     if(strcmp(argv[3], "encrypt") == 0) {
         // Fill the padding
         for(int indexByte = BLOCK_SIZE * nbBlocks - padding; indexByte < BLOCK_SIZE * nbBlocks - 1; ++indexByte) {
@@ -535,13 +554,13 @@ int main(int argc, char** argv) {
         
         cudaEventRecord(calculation_start, 0);
 
-        encrypt<<<1, nbBlocks>>>(d_blocks, d_key);
+        encrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks);
     } else if(strcmp(argv[3], "decrypt") == 0) {
         cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
         
         cudaEventRecord(calculation_start, 0);
         
-        decrypt<<<1, nbBlocks>>>(d_blocks, d_key);
+        decrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks);
     } else {
         printf("Error : unknown command %s\n", argv[3]);
         return 1;
@@ -559,8 +578,11 @@ int main(int argc, char** argv) {
     }
 
     // Show CUDA errors
-    // cudaError_t error = cudaGetLastError();
-    // printf("%s\n", cudaGetErrorString(error));
+    cudaError_t error = cudaGetLastError();
+    if(error != cudaSuccess) {
+        printf("CUDA error : %s\n", cudaGetErrorString(error));
+        exit(1);
+    }
 
     for(int indexBlock = 0; indexBlock < nbBlocks; ++indexBlock) {
         Aes128Block block = blocks + (indexBlock * BLOCK_SIZE);
