@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <time.h> 
 
 #define BLOCK_SIZE 16
 #define KEY_SIZE 16
@@ -477,7 +478,7 @@ void destroyKey(Aes128Key key) {
     free(key);
 }
 
-
+/*
 int main() {
     Aes128Block block = generateBlock();
     // Create a copy of the block
@@ -514,13 +515,15 @@ int main() {
 
     return 0;
 }
+*/
 
-/*
 int main(int argc, char** argv) {
     if(argc != 4) {
         printf("Usage : ./aesEcb <input file> <output file> <mode>\n");
         return 1;
     }
+
+    clock_t t; 
 
     FILE* file = fopen(argv[1], "r");
     if(file == NULL) {
@@ -562,9 +565,13 @@ int main(int argc, char** argv) {
             }
         }
     }
+
+    t = clock() - t;
+
+    printf("Time taken : %fms\n", ((double)t)/CLOCKS_PER_SEC*1000);
+
     fclose(file);
     fclose(outputFile);
     destroyKey(key);
     return 0;
 }
- */

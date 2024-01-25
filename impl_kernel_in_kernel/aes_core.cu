@@ -450,6 +450,16 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    cudaEvent_t total_start, total_stop;
+    cudaEventCreate(&total_start);
+    cudaEventCreate(&total_stop);
+
+    cudaEvent_t calculation_start, calculation_stop;
+    cudaEventCreate(&calculation_start);
+    cudaEventCreate(&calculation_stop);
+
+    cudaEventRecord(total_start, 0);
+
     // Get output file
     FILE* outputFile = fopen(argv[2], "w");
     if(outputFile == NULL) {
@@ -522,14 +532,24 @@ int main(int argc, char** argv) {
         padding = 0;
 
         cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
+        
+        cudaEventRecord(calculation_start, 0);
+
         encrypt<<<1, nbBlocks>>>(d_blocks, d_key);
     } else if(strcmp(argv[3], "decrypt") == 0) {
         cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
+        
+        cudaEventRecord(calculation_start, 0);
+        
         decrypt<<<1, nbBlocks>>>(d_blocks, d_key);
     } else {
         printf("Error : unknown command %s\n", argv[3]);
         return 1;
     }
+
+    // Stop the timer
+    cudaEventRecord(calculation_stop, 0);
+    cudaEventSynchronize(calculation_stop);
 
     cudaMemcpy(blocks, d_blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyDeviceToHost);
 
@@ -552,6 +572,19 @@ int main(int argc, char** argv) {
             fputc(block[indexByte], outputFile);
         }
     }
+
+    // Stop the timer
+    cudaEventRecord(total_stop, 0);
+    cudaEventSynchronize(total_stop);
+
+    // Display times
+    float elapsedTime;
+
+    cudaEventElapsedTime(&elapsedTime, total_start, total_stop);
+    printf("Execution (total time): %f ms\n", elapsedTime);
+
+    cudaEventElapsedTime(&elapsedTime, calculation_start, calculation_stop);
+    printf("Execution (calculation time): %f ms\n", elapsedTime);
 
     cudaFree(d_blocks);
     cudaFree(d_key);
