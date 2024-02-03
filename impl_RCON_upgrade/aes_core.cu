@@ -2,8 +2,6 @@
 
 #define BLOCK_SIZE 16
 #define KEY_SIZE 16
-#define MAX_THREADS_PER_BLOCK 256
-#define MAX_BLOCKS_PER_KERNEL_CALL 256
 
 typedef u_int8_t* Aes128Key; // 128 bits (16 bytes)
 typedef Aes128Key* Aes128KeyExpanded; // 10 * 128 bits (10 * 16 bytes)
@@ -12,31 +10,15 @@ typedef u_int8_t* Aes128Block; // 128 bits (16 bytes)
 // ***********************
 // RCon
 // ***********************
-__constant__ u_int8_t RconMatrix[255];
-u_int8_t CPU_RconMatrix[255]= {
-        0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8,
-        0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3,
-        0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f,
-        0x25, 0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d,
-        0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab,
-        0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d,
-        0xfa, 0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25,
-        0x4a, 0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01,
-        0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d,
-        0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa,
-        0xef, 0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a,
-        0x94, 0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02,
-        0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a,
-        0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef,
-        0xc5, 0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94,
-        0x33, 0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb, 0x8d, 0x01, 0x02, 0x04,
-        0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f,
-        0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5,
-        0x91, 0x39, 0x72, 0xe4, 0xd3, 0xbd, 0x61, 0xc2, 0x9f, 0x25, 0x4a, 0x94, 0x33,
-        0x66, 0xcc, 0x83, 0x1d, 0x3a, 0x74, 0xe8, 0xcb
-};
 __device__ u_int8_t getRconValue(int index) {
-    return RconMatrix[index];
+    if(index == 1) {
+        return 0x01;
+    }
+    const int lastRoundValue = getRconValue(index - 1);
+    if(lastRoundValue < 0x80) {
+        return 2 * lastRoundValue;
+    }
+    return (2 * lastRoundValue) ^ 0x11b;
 }
 
 
@@ -93,7 +75,7 @@ __device__ u_int8_t getInvSubBytesValue(int index) {
     return invSubBytesMatrix[index];
 }
 
-__device__ void subBytes(u_int8_t* block) {
+__device__ void subBytes(u_int8_t* block, int rowIndex) {
     /*
 
     Substitude each byte of the block with another byte according to a lookup table (a block must be 128 bits)
@@ -104,12 +86,14 @@ __device__ void subBytes(u_int8_t* block) {
     13 14 15 16             d7 ab 76 ca
     */
 
-    for(int index = 0; index < 16; ++index) {
+    const int firstIndex = 4 * rowIndex;
+
+    for(int index = firstIndex; index < firstIndex + 4; ++index) {
         block[index] = getSubBytesValue(block[index]);
     }
 }
 
-__device__ void invSubBytes(u_int8_t* block) {
+__device__ void invSubBytes(u_int8_t* block, int rowIndex) {
     /*
 
     Substitude each byte of the block with the initial byte according to a lookup table (a block must be 128 bits)
@@ -120,7 +104,10 @@ __device__ void invSubBytes(u_int8_t* block) {
     d7 ab 76 ca             13 14 15 16
 
     */
-    for(int index = 0; index < 16; ++index) {
+
+    const int firstIndex = 4 * rowIndex;
+
+    for(int index = firstIndex; index < firstIndex + 4; ++index) {
         block[index] = getInvSubBytesValue(block[index]);
     }
 }
@@ -129,7 +116,7 @@ __device__ void invSubBytes(u_int8_t* block) {
 // ShiftRows
 // ***********************
 
-__device__ void shiftRows(u_int8_t* block) {
+__device__ void shiftRows(u_int8_t* block, int rowIndex) {
     /*
 
     Shift each line of the block from right to left (a block must be 128 bits)
@@ -140,19 +127,17 @@ __device__ void shiftRows(u_int8_t* block) {
     13 14 15 16             16 13 14 15
     */
 
-    for(int rowIndex = 0; rowIndex < 4; ++rowIndex) {
-        u_int8_t tmp[4] = {0};
-        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
-            tmp[columnIndex] = block[(rowIndex * 5 + columnIndex * 4) % 16];
-        }
+    u_int8_t tmp[4] = {0};
+    for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+        tmp[columnIndex] = block[(rowIndex * 5 + columnIndex * 4) % 16];
+    }
 
-        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
-            block[columnIndex * 4 + rowIndex] = tmp[columnIndex];
-        }
+    for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+        block[columnIndex * 4 + rowIndex] = tmp[columnIndex];
     }
 }
 
-__device__ void invShiftRows(u_int8_t* block) {
+__device__ void invShiftRows(u_int8_t* block, int rowIndex) {
     /*
 
     Shift each line of the block from left to right (a block must be 128 bits)
@@ -163,16 +148,14 @@ __device__ void invShiftRows(u_int8_t* block) {
     13 14 15 16             16 13 14 15
     */
 
-    for(int rowIndex = 0; rowIndex < 4; ++rowIndex) {
-        u_int8_t tmp[4] = {0};
-        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
-            const int index = columnIndex * 4 + rowIndex;
-            tmp[columnIndex] = block[(16 + index - rowIndex * 4) % 16];
-        }
+    u_int8_t tmp[4] = {0};
+    for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+        const int index = columnIndex * 4 + rowIndex;
+        tmp[columnIndex] = block[(16 + index - rowIndex * 4) % 16];
+    }
 
-        for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
-            block[columnIndex * 4 + rowIndex] = tmp[columnIndex];
-        }
+    for(int columnIndex = 0; columnIndex < 4; ++columnIndex) {
+        block[columnIndex * 4 + rowIndex] = tmp[columnIndex];
     }
 }
 
@@ -206,7 +189,7 @@ u_int8_t CPU_mixColumnsMatrix[4][4] = {
         {0x03, 0x01, 0x01, 0x02}
 };
 
-__device__ void mixColumns(u_int8_t* block) {
+__device__ void mixColumns(u_int8_t* block, int indexRow) {
     /*
 
     Multiply each column of the block by a fixed matrix (a block must be 128 bits)
@@ -221,13 +204,11 @@ __device__ void mixColumns(u_int8_t* block) {
     memcpy(initialBlock, block, 16);
 
     for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
-        for(int indexRow = 0; indexRow < 4; ++indexRow) {
-            u_int8_t value = 0;
-            for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
-                value ^= galois_multiplication(initialBlock[indexColumnVariant + (indexColumn * 4)], mixColumnsMatrix[indexRow][indexColumnVariant]);
-            }
-            block[indexRow + indexColumn * 4] = value;
+        u_int8_t value = 0;
+        for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
+            value ^= galois_multiplication(initialBlock[indexColumnVariant + (indexColumn * 4)], mixColumnsMatrix[indexRow][indexColumnVariant]);
         }
+        block[indexRow + indexColumn * 4] = value;
     }
 }
 
@@ -239,7 +220,7 @@ u_int8_t CPU_invMixColumnsMatrix[4][4] = {
         {0x0b, 0x0d, 0x09, 0x0e}
 };
 
-__device__ void invMixColumns(u_int8_t* block) {
+__device__ void invMixColumns(u_int8_t* block, int indexRow) {
     /*
 
     Multiply each column of the block by a fixed matrix (a block must be 128 bits)
@@ -254,13 +235,11 @@ __device__ void invMixColumns(u_int8_t* block) {
     memcpy(initialBlock, block, 16);
 
     for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
-        for(int indexRow = 0; indexRow < 4; ++indexRow) {
-            u_int8_t value = 0;
-            for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
-                value ^= galois_multiplication(initialBlock[indexColumnVariant + (indexColumn * 4)], invMixColumnsMatrix[indexRow][indexColumnVariant]);
-            }
-            block[indexRow + indexColumn * 4] = value;
+        u_int8_t value = 0;
+        for(int indexColumnVariant = 0; indexColumnVariant < 4; ++indexColumnVariant) {
+            value ^= galois_multiplication(initialBlock[indexColumnVariant + (indexColumn * 4)], invMixColumnsMatrix[indexRow][indexColumnVariant]);
         }
+        block[indexRow + indexColumn * 4] = value;
     }
 }
 
@@ -325,14 +304,12 @@ __device__ Aes128KeyExpanded expandKey(Aes128Key baseKey, const int nbRounds) {
     return keyExpanded;
 }
 
-__device__ void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeKey, int indexRound) {
+__device__ void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeKey, int indexRound, int indexRow) {
     Aes128Key key = completeKey[indexRound];
 
     for(int indexColumn = 0; indexColumn < 4; ++indexColumn) {
-        for(int indexRow = 0; indexRow < 4; ++indexRow) {
-            const int index = indexRow * 4 + indexColumn;
-            block[index] = block[index] ^ key[index];
-        }
+        const int index = indexRow * 4 + indexColumn;
+        block[index] = block[index] ^ key[index];
     }
 }
 
@@ -341,56 +318,60 @@ __device__ void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeK
 // ***********************
 
 __global__ void decrypt(Aes128Block cipherTextBlocks, Aes128Key key, int nbAesBlocks) {
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-
-    if(tid >= nbAesBlocks) {
-        return;
-    }
+    int rowIndex = threadIdx.x;
 
     // 1. Expand the key
     Aes128KeyExpanded expandedKey = expandKey(key, 10);
 
-    Aes128Block block = cipherTextBlocks + (tid * BLOCK_SIZE);
+    Aes128Block block = cipherTextBlocks + (blockIdx.x * BLOCK_SIZE);
 
     // 2. AddRoundKey
-    addRoundKey(block, expandedKey, 10);
+    addRoundKey(block, expandedKey, 10, rowIndex);
 
     // 2. Rounds
     for(int indexRound = 9; indexRound >= 0; --indexRound) {
-        invShiftRows(block);
-        invSubBytes(block);
-        addRoundKey(block, expandedKey, indexRound);
+        invShiftRows(block, rowIndex);
+        invSubBytes(block, rowIndex);
+        addRoundKey(block, expandedKey, indexRound, rowIndex);
         if (indexRound != 0) {
-            invMixColumns(block);
+            invMixColumns(block, rowIndex);
         }
     }
 
     destroyExpandedKey(expandedKey);
 }
 
-__global__ void encrypt(Aes128Block plainTextBlocks, Aes128Key key, int nbAesBlocks, int indexShift) {
-    int tid = indexShift + threadIdx.x + blockIdx.x * blockDim.x;
-
-    if(tid >= nbAesBlocks) {
-        return;
-    }
+__global__ void encrypt(Aes128Block plainTextBlocks, Aes128Key key, int nbAesBlocks) {
+    int rowIndex = threadIdx.x;
+    __shared__ u_int8_t sBlock[BLOCK_SIZE];
 
     // 1. Expand the key
     Aes128KeyExpanded expandedKey = expandKey(key, 10);
 
-    Aes128Block block = plainTextBlocks + (tid * BLOCK_SIZE);
+    Aes128Block block = plainTextBlocks + (blockIdx.x * BLOCK_SIZE);
+
+    // Copy the block to the shared memory
+    for(int i = 0; i < 4; ++i) {
+        sBlock[rowIndex * 4 + i] = block[rowIndex * 4 + i];
+    }
+
 
     // 2. AddRoundKey
-    addRoundKey(block, expandedKey, 0);
+    addRoundKey(sBlock, expandedKey, 0, rowIndex);
 
     // 3. Rounds
     for(int indexRound = 1; indexRound <= 10; ++indexRound) {
-        subBytes(block);
-        shiftRows(block);
+        subBytes(sBlock, rowIndex);
+        shiftRows(sBlock, rowIndex);
         if (indexRound != 10) {
-            mixColumns(block);
+            mixColumns(sBlock, rowIndex);
         }
-        addRoundKey(block, expandedKey, indexRound);
+        addRoundKey(sBlock, expandedKey, indexRound, rowIndex);
+    }
+    __syncthreads();
+
+    for(int i = 0; i < 4; ++i) {
+        block[rowIndex * 4 + i] = sBlock[rowIndex * 4 + i];
     }
 
     destroyExpandedKey(expandedKey);
@@ -518,7 +499,6 @@ int main(int argc, char** argv) {
     cudaMalloc(&d_blocks, BLOCK_SIZE * nbBlocks);
 
     // Create constant memory
-    cudaMemcpyToSymbol(RconMatrix, &CPU_RconMatrix, 255 * sizeof(u_int8_t));
     cudaMemcpyToSymbol(subBytesMatrix, &CPU_subBytesMatrix, 256 * sizeof(u_int8_t));
     cudaMemcpyToSymbol(invSubBytesMatrix, &CPU_invSubBytesMatrix, 256 * sizeof(u_int8_t));
     cudaMemcpyToSymbol(mixColumnsMatrix, &CPU_mixColumnsMatrix, 4 * 4 * sizeof(u_int8_t));
@@ -530,28 +510,9 @@ int main(int argc, char** argv) {
     cudaMalloc(&d_key, KEY_SIZE);
     cudaMemcpy(d_key, key, KEY_SIZE, cudaMemcpyHostToDevice);
 
-    int nbCudaBlocks = 1;
-    int nbThreadsPerBlock = nbBlocks;
-    if(nbBlocks > MAX_THREADS_PER_BLOCK) {
-        nbCudaBlocks = nbBlocks / MAX_THREADS_PER_BLOCK;
-        if(nbBlocks % MAX_THREADS_PER_BLOCK != 0) {
-            ++nbCudaBlocks;
-        }
-        nbThreadsPerBlock = MAX_THREADS_PER_BLOCK;
-    }
-    int nbKernelCalls = 1;
-    if(nbCudaBlocks > MAX_BLOCKS_PER_KERNEL_CALL) {
-        nbKernelCalls = nbCudaBlocks / MAX_BLOCKS_PER_KERNEL_CALL;
-        if(nbBlocks % MAX_BLOCKS_PER_KERNEL_CALL != 0) {
-            ++nbKernelCalls;
-        }
-        nbCudaBlocks = MAX_BLOCKS_PER_KERNEL_CALL;
-    }
-
-    printf("nbBlocks : %d\n", nbBlocks);
-    printf("nbCudaBlocks : %d\n", nbCudaBlocks);
-    printf("nbThreadsPerBlock : %d\n", nbThreadsPerBlock);
-    printf("nbKernelCalls : %d\n", nbKernelCalls);
+    int nbCudaBlocks = nbBlocks;
+    int nbThreadsPerBlock = 4;
+    
 
     if(strcmp(argv[3], "encrypt") == 0) {
         // Fill the padding
@@ -565,9 +526,7 @@ int main(int argc, char** argv) {
 
         cudaEventRecord(calculation_start, 0);
 
-        for(int i = 0; i < nbKernelCalls; ++i) {
-            encrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks, i * 16000);
-        }
+        encrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks);
     } else if(strcmp(argv[3], "decrypt") == 0) {
         cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
 
