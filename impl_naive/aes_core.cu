@@ -2,7 +2,7 @@
 
 #define BLOCK_SIZE 16
 #define KEY_SIZE 16
-#define MAX_THREADS_PER_BLOCK 256
+#define MAX_THREADS_PER_BLOCK 128
 #define MAX_BLOCKS_PER_KERNEL_CALL 256
 
 typedef u_int8_t* Aes128Key; // 128 bits (16 bytes)
@@ -340,8 +340,8 @@ __device__ void addRoundKey(Aes128Block block, const Aes128KeyExpanded completeK
 // Encryption & Decryption
 // ***********************
 
-__global__ void decrypt(Aes128Block cipherTextBlocks, Aes128Key key, int nbAesBlocks) {
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+__global__ void decrypt(Aes128Block cipherTextBlocks, Aes128Key key, int nbAesBlocks, int indexShift) {
+    int tid = indexShift + threadIdx.x + blockIdx.x * blockDim.x;
 
     if(tid >= nbAesBlocks) {
         return;
@@ -548,11 +548,6 @@ int main(int argc, char** argv) {
         nbCudaBlocks = MAX_BLOCKS_PER_KERNEL_CALL;
     }
 
-    printf("nbBlocks : %d\n", nbBlocks);
-    printf("nbCudaBlocks : %d\n", nbCudaBlocks);
-    printf("nbThreadsPerBlock : %d\n", nbThreadsPerBlock);
-    printf("nbKernelCalls : %d\n", nbKernelCalls);
-
     if(strcmp(argv[3], "encrypt") == 0) {
         // Fill the padding
         for(int indexByte = BLOCK_SIZE * nbBlocks - padding; indexByte < BLOCK_SIZE * nbBlocks - 1; ++indexByte) {
@@ -566,14 +561,16 @@ int main(int argc, char** argv) {
         cudaEventRecord(calculation_start, 0);
 
         for(int i = 0; i < nbKernelCalls; ++i) {
-            encrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks, i * 16000);
+            encrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks, i * nbCudaBlocks * nbThreadsPerBlock);
         }
     } else if(strcmp(argv[3], "decrypt") == 0) {
         cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
 
         cudaEventRecord(calculation_start, 0);
 
-        decrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks);
+        for(int i = 0; i < nbKernelCalls; ++i) {
+            decrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks, i * nbCudaBlocks * nbThreadsPerBlock);
+        }
     } else {
         printf("Error : unknown command %s\n", argv[3]);
         return 1;
