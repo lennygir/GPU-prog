@@ -3,12 +3,11 @@
 #include <memory.h>
 #include <stdlib.h>
 
-#include <device_functions.h>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
 #include "chacha20_shared.cuh"
-#include "../conversion_utils.cuh"
+#include "../../_utils/conversion_utils.cuh"
 
 void chacha20_process_file(const char* input_path, const char* output_path, const uint8_t* key) {
     clock_t c_start = clock();
@@ -41,21 +40,10 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
 
     clock_t c_file_read = 0;
     clock_t c_file_write = 0;
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    float cuda_tmp_ms = 0.f;
-    float mem_alloc_cuda_ms = 0.f; // Time spent for memory allocation + copy on the device
-    float processing_cuda_ms = 0.f; // Time spent for the process
 
-    cudaEventRecord(start);
     uint32_t *d_init_state;
     cudaMalloc((uint32_t**)&d_init_state, sizeof(h_init_state));
     cudaMemcpy(d_init_state, &h_init_state, sizeof(h_init_state), cudaMemcpyHostToDevice);
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&cuda_tmp_ms, start, stop);
-	mem_alloc_cuda_ms += cuda_tmp_ms;
 
     uint64_t start_counter = 0;
     while (file_size > 0)
@@ -73,14 +61,9 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
         clock_t c_file_read_end = clock();
         c_file_read += c_file_read_end - c_file_read_start;
 
-        cudaEventRecord(start);
         uint8_t* d_buffer;
         cudaMalloc((uint8_t**)&d_buffer, bytes_read);
         cudaMemcpy(d_buffer, h_buffer, bytes_read, cudaMemcpyHostToDevice);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&cuda_tmp_ms, start, stop);
-        mem_alloc_cuda_ms += cuda_tmp_ms;
 
         // Determine the number of blocks
         size_t num_chacha20_blocks = bytes_read / sizeof(h_init_state);
@@ -94,13 +77,8 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
         }
 
         // Encrypt the file
-        cudaEventRecord(start);
         chacha20_process << <num_blocks, num_threads_per_block >> > (d_init_state, d_buffer, d_buffer, bytes_read, start_counter);
         cudaDeviceSynchronize();
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&cuda_tmp_ms, start, stop);
-        processing_cuda_ms += cuda_tmp_ms;
 
         // Handle errors
         cudaError_t error = cudaGetLastError();
@@ -110,12 +88,7 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
         }
 
         // Copy the encrypted data back to the host
-        cudaEventRecord(start);
         cudaMemcpy(h_buffer, d_buffer, bytes_read, cudaMemcpyDeviceToHost);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&cuda_tmp_ms, start, stop);
-        mem_alloc_cuda_ms += cuda_tmp_ms;
 
         cudaFree(d_buffer);
 
@@ -139,13 +112,8 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
     clock_t c_end = clock();
     clock_t c_total = c_end - c_start;
 
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-
     printf("File read: %f ms\n", (double)c_file_read / CLOCKS_PER_SEC * 1000);
     printf("File write: %f ms\n", (double)c_file_write / CLOCKS_PER_SEC * 1000);
-    printf("Memory allocation + copy on the device: %f ms\n", mem_alloc_cuda_ms);
-    printf("Processing: %f ms\n", processing_cuda_ms);
     printf("Total: %f ms\n", (double)c_total / CLOCKS_PER_SEC * 1000);
 }
 

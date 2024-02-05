@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 #include "chacha20_c.cuh"
-#include "../conversion_utils.cuh"
+#include "../../_utils/conversion_utils.cuh"
 
 void chacha20_process_file(const char* input_path, const char* output_path, const uint8_t* key) {
     clock_t c_start = clock();
@@ -64,9 +64,9 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
     // Print the time taken
     printf("== METRICS ==\n");
     printf("Alloc: %f\n", (double)(end_alloc - start_alloc) / CLOCKS_PER_SEC * 1000);
-    printf("Read: %f\n", (double)(end_read - start_read) / CLOCKS_PER_SEC * 1000);
+    printf("File read: %f\n", (double)(end_read - start_read) / CLOCKS_PER_SEC * 1000);
     printf("Process: %f\n", (double)(end_process - start_process) / CLOCKS_PER_SEC * 1000);
-    printf("Write: %f\n", (double)(end_write - start_write) / CLOCKS_PER_SEC * 1000);
+    printf("File write: %f\n", (double)(end_write - start_write) / CLOCKS_PER_SEC * 1000);
     printf("Total: %f\n", (double)time_taken / CLOCKS_PER_SEC * 1000);
 }
 

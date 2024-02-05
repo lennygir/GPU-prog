@@ -7,7 +7,7 @@
 #include "device_launch_parameters.h"
 
 #include "chacha20_naive.cuh"
-#include "../conversion_utils.cuh"
+#include "../../_utils/conversion_utils.cuh"
 
 void chacha20_process_file(const char* input_path, const char* output_path, const uint8_t* key) {
     clock_t c_start = clock();
@@ -43,16 +43,10 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
 
     clock_t c_file_read = 0;
     clock_t c_file_write = 0;
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    float mem_alloc_cuda_ms = 0.f; // Time spent for memory allocation + copy on the device
-    float processing_cuda_ms = 0.f; // Time spent for the process
 
     uint64_t start_counter = 0;
     while (file_size > 0)
     {
-        float cuda_event_ms_tmp = 0.f;
         unsigned long long size_to_process = MIN(file_size, deviceProp.totalGlobalMem / 3);
 
         // Store the file in a buffer
@@ -64,17 +58,11 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
         }
         size_t bytes_read = fread(h_buffer, 1, size_to_process, input_file);
         clock_t end_file_read = clock();
-
         c_file_read += end_file_read - start_file_read;
 
-        cudaEventRecord(start);
         uint8_t* d_buffer;
         cudaMalloc((uint8_t**)&d_buffer, bytes_read);
         cudaMemcpy(d_buffer, h_buffer, bytes_read, cudaMemcpyHostToDevice);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&cuda_event_ms_tmp, start, stop);
-		mem_alloc_cuda_ms += cuda_event_ms_tmp;
 
         // Determine the number of blocks
         size_t num_chacha20_blocks = bytes_read / sizeof(h_ctx.keystream);
@@ -88,13 +76,8 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
         }
 
         // Encrypt the file
-        cudaEventRecord(start);
         chacha20_process << <num_blocks, num_threads_per_block >> > (d_ctx, d_buffer, d_buffer, bytes_read, start_counter);
         cudaDeviceSynchronize();
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&cuda_event_ms_tmp, start, stop);
-        processing_cuda_ms += cuda_event_ms_tmp;
 
         // Handle errors
         cudaError_t error = cudaGetLastError();
@@ -104,12 +87,7 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
         }
 
         // Copy the encrypted data back to the host
-        cudaEventRecord(start);
         cudaMemcpy(h_buffer, d_buffer, bytes_read, cudaMemcpyDeviceToHost);
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&cuda_event_ms_tmp, start, stop);
-        mem_alloc_cuda_ms += cuda_event_ms_tmp;
 
         cudaFree(d_buffer);
 
@@ -125,7 +103,7 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
         start_counter += num_chacha20_blocks;
     }
     // Free the memory on the device
-	cudaFree(d_ctx);
+    cudaFree(d_ctx);
 
     fclose(input_file);
     fclose(output_file);
@@ -133,13 +111,8 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
     clock_t c_end = clock();
     clock_t c_total = c_end - c_start;
 
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-
-	printf("File read: %f ms\n", (double)c_file_read / CLOCKS_PER_SEC * 1000);
-	printf("File write: %f ms\n", (double)c_file_write / CLOCKS_PER_SEC * 1000);
-	printf("Memory allocation + copy on the device: %f ms\n", mem_alloc_cuda_ms);
-    printf("Processing: %f ms\n", processing_cuda_ms);
+    printf("File read: %f ms\n", (double)c_file_read / CLOCKS_PER_SEC * 1000);
+    printf("File write: %f ms\n", (double)c_file_write / CLOCKS_PER_SEC * 1000);
     printf("Total: %f ms\n", (double)c_total / CLOCKS_PER_SEC * 1000);
 }
 
@@ -187,13 +160,13 @@ __device__ void chacha20_block(chacha20_ctx* ctx, uint32_t output[16], uint64_t 
     while (i--)
     {
         CHACHA20_QUARTER_ROUND(output, 0, 4, 8, 12)
-            CHACHA20_QUARTER_ROUND(output, 1, 5, 9, 13)
-            CHACHA20_QUARTER_ROUND(output, 2, 6, 10, 14)
-            CHACHA20_QUARTER_ROUND(output, 3, 7, 11, 15)
-            CHACHA20_QUARTER_ROUND(output, 0, 5, 10, 15)
-            CHACHA20_QUARTER_ROUND(output, 1, 6, 11, 12)
-            CHACHA20_QUARTER_ROUND(output, 2, 7, 8, 13)
-            CHACHA20_QUARTER_ROUND(output, 3, 4, 9, 14)
+        CHACHA20_QUARTER_ROUND(output, 1, 5, 9, 13)
+        CHACHA20_QUARTER_ROUND(output, 2, 6, 10, 14)
+        CHACHA20_QUARTER_ROUND(output, 3, 7, 11, 15)
+        CHACHA20_QUARTER_ROUND(output, 0, 5, 10, 15)
+        CHACHA20_QUARTER_ROUND(output, 1, 6, 11, 12)
+        CHACHA20_QUARTER_ROUND(output, 2, 7, 8, 13)
+        CHACHA20_QUARTER_ROUND(output, 3, 4, 9, 14)
     }
     for (i = 0; i < 16; ++i)
     {
@@ -205,9 +178,9 @@ __device__ void chacha20_block(chacha20_ctx* ctx, uint32_t output[16], uint64_t 
 __device__ inline void chacha20_xor(uint8_t* keystream, uint8_t* in, uint8_t* out, size_t length)
 {
     for (size_t i = 0; i < length; i++)
-	{
-		out[i] = in[i] ^ keystream[i];
-	}
+    {
+        out[i] = in[i] ^ keystream[i];
+    }
 }
 
 __device__ void chacha20_set_counter(uint32_t* state, uint64_t counter)

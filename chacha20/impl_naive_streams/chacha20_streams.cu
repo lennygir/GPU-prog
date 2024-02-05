@@ -3,12 +3,11 @@
 #include <memory.h>
 #include <stdlib.h>
 
-#include <device_functions.h>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
 #include "chacha20_streams.cuh"
-#include "../conversion_utils.cuh"
+#include "../../_utils/conversion_utils.cuh"
 
 #define NB_STREAMS 6
 
@@ -66,7 +65,7 @@ void chacha20_process_file(const char* input_path, const char* output_path, cons
         cudaStreamCreate(&stream);
 
         uint8_t* d_buffer;
-        cudaMallocAsync((uint8_t**)&d_buffer, size_to_process, stream);
+        cudaMalloc((uint8_t**)&d_buffer, size_to_process);
 
         // Store the part of the file to process in a buffer
         uint8_t* h_buffer = (uint8_t*)malloc(size_to_process);
