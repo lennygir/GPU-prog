@@ -5,6 +5,7 @@
 *.cubin
 *.fatbin
 
+.vs
 .vscode
 
 # Extension-less files (C builds)
