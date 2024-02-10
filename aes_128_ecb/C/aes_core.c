@@ -2,7 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <time.h> 
+#include <time.h>
+
+#include "../../_utils/conversion_utils.h"
 
 #define BLOCK_SIZE 16
 #define KEY_SIZE 16
@@ -449,129 +451,14 @@ void destroyBlock(Aes128Block block) {
     free(block);
 }
 
-Aes128Key generateKey() {
-    Aes128Key key = malloc(KEY_SIZE);
+Aes128Key generateKey(char *keyHex) {
+    if (strlen(keyHex) != KEY_SIZE * 2) {
+        printf("Error : The key must be 16 bytes long (32 characters in hexadecimal)\n");
+        exit(1);
+    }
 
-    key[0] = 0x2b;
-    key[4] = 0x7e;
-    key[8] = 0x15;
-    key[12] = 0x16;
-
-    key[1] = 0x28;
-    key[5] = 0xae;
-    key[9] = 0xd2;
-    key[13] = 0xa6;
-
-    key[2] = 0xab;
-    key[6] = 0xf7;
-    key[10] = 0x15;
-    key[14] = 0x88;
-
-    key[3] = 0x09;
-    key[7] = 0xcf;
-    key[11] = 0x4f;
-    key[15] = 0x3c;
-
-    return key;
+    return hex_to_byte(keyHex);
 }
 void destroyKey(Aes128Key key) {
     free(key);
-}
-
-/*
-int main() {
-    Aes128Block block = generateBlock();
-    // Create a copy of the block
-    Aes128Block initialBlock = generateBlock();
-    memcpy(initialBlock, block, BLOCK_SIZE);
-
-    Aes128Key key = generateKey();
-
-    encrypt(block, key, BLOCK_SIZE, KEY_SIZE);
-    printf("Encrypted block : \n");
-    for(int index = 0; index < 16; ++index) {
-        printf("%02x ", block[index]);
-    }
-    printf("\n\n");
-
-    decrypt(block, key, BLOCK_SIZE, KEY_SIZE);
-    printf("Decrypted block : \n");
-    for(int index = 0; index < 16; ++index) {
-        printf("%02x ", block[index]);
-    }
-    printf("\n\n");
-
-    // Check that the block is the same as the initial block
-    for(int index = 0; index < 16; ++index) {
-        if (block[index] != initialBlock[index]) {
-            printf("Error : block is not the same as the initial block\n");
-            return 1;
-        }
-    }
-
-    destroyBlock(block);
-    destroyBlock(initialBlock);
-    destroyKey(key);
-
-    return 0;
-}
-*/
-
-int main(int argc, char** argv) {
-    if(argc != 4) {
-        printf("Usage : ./aesEcb <input file> <output file> <mode>\n");
-        return 1;
-    }
-
-    clock_t t; 
-
-    FILE* file = fopen(argv[1], "r");
-    if(file == NULL) {
-        printf("Error : cannot open file %s\n", argv[1]);
-        return 1;
-    }
-    FILE* outputFile = fopen(argv[2], "w");
-
-    fseek(file, 0, SEEK_END); // seek to end of file
-    long fileSizeInByte = ftell(file); // get current file pointer
-    fseek(file, 0, SEEK_SET); // seek back to beginning of file
-
-    Aes128Key key = generateKey();
-
-    if(strcmp(argv[3], "encrypt") == 0) {
-        while(!feof(file)) {
-            Aes128Block block = malloc(BLOCK_SIZE);
-            int indexByte = 0;
-            while(indexByte < BLOCK_SIZE && !feof(file)) {
-                block[indexByte] = fgetc(file);
-                ++indexByte;
-            }
-            encrypt(block, key, BLOCK_SIZE, KEY_SIZE);
-            for(int indexByte = 0; indexByte < BLOCK_SIZE; ++indexByte) {
-                fputc(block[indexByte], outputFile);
-            }
-        }
-    } else if(strcmp(argv[3], "decrypt") == 0) {
-        while(!feof(file)) {
-            Aes128Block block = malloc(BLOCK_SIZE);
-            int indexByte = 0;
-            while(indexByte < BLOCK_SIZE && !feof(file)) {
-                block[indexByte] = fgetc(file);
-                ++indexByte;
-            }
-            decrypt(block, key, BLOCK_SIZE, KEY_SIZE);
-            for(int indexByte = 0; indexByte < BLOCK_SIZE; ++indexByte) {
-                fputc(block[indexByte], outputFile);
-            }
-        }
-    }
-
-    t = clock() - t;
-
-    printf("Time taken : %fms\n", ((double)t)/CLOCKS_PER_SEC*1000);
-
-    fclose(file);
-    fclose(outputFile);
-    destroyKey(key);
-    return 0;
 }

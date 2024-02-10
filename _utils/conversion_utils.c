@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "conversion_utils.cuh"
+#include "conversion_utils.h"
 
 uint8_t* hex_to_byte(const char* hex)
 {

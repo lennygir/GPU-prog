@@ -1,9 +1,8 @@
 #include <stdio.h>
-#include <stdint.h>
 #include <string.h>
 
-#include "../../_utils/conversion_utils.cuh"
-#include "chacha20.cuh"
+#include "../../_utils/conversion_utils.h"
+#include "chacha20.h"
 
 int main(int argc, char* argv[]) {
     if (argc != 5) {

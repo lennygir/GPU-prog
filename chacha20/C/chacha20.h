@@ -28,6 +28,6 @@ void chacha20_init(chacha20_ctx* ctx, const uint8_t* key, const uint8_t nonce[8]
 void chacha20_process(chacha20_ctx* ctx, const uint8_t* in, uint8_t* out, size_t size_to_encrypt);
 
 void chacha20_block(chacha20_ctx* ctx, uint32_t output[16]);
-inline void chacha20_xor(uint8_t* keystream, const uint8_t** in, uint8_t** out, size_t length);
+void chacha20_xor(uint8_t* keystream, const uint8_t** in, uint8_t** out, size_t length);
 
 #endif //CHACHA20_C_IMPL_H

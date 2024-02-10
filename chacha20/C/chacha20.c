@@ -3,8 +3,8 @@
 #include <memory.h>
 #include <stdlib.h>
 
-#include "chacha20_c.cuh"
-#include "../../_utils/conversion_utils.cuh"
+#include "chacha20.h"
+#include "../../_utils/conversion_utils.h"
 
 void chacha20_process_file(const char* input_path, const char* output_path, const uint8_t* key) {
     clock_t c_start = clock();

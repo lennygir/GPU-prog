@@ -1,5 +1,7 @@
 #include <stdio.h>
 
+#include "../../_utils/conversion_utils.cuh"
+
 #define BLOCK_SIZE 16
 #define KEY_SIZE 16
 
@@ -403,188 +405,14 @@ __host__ void destroyBlock(Aes128Block block) {
     free(block);
 }
 
-__host__ Aes128Key generateKey() {
-    Aes128Key key = (Aes128Key)malloc(KEY_SIZE);
-
-    key[0] = 0x2b;
-    key[4] = 0x7e;
-    key[8] = 0x15;
-    key[12] = 0x16;
-
-    key[1] = 0x28;
-    key[5] = 0xae;
-    key[9] = 0xd2;
-    key[13] = 0xa6;
-
-    key[2] = 0xab;
-    key[6] = 0xf7;
-    key[10] = 0x15;
-    key[14] = 0x88;
-
-    key[3] = 0x09;
-    key[7] = 0xcf;
-    key[11] = 0x4f;
-    key[15] = 0x3c;
-
-    return key;
-}
-__host__ void destroyKey(Aes128Key key) {
-    free(key);
-}
-
-int main(int argc, char** argv) {
-    if(argc != 4) {
-        printf("Usage : ./aesEcb <input file> <output file> <encrypt | decrypt>\n");
-        return 1;
-    }
-
-    cudaEvent_t total_start, total_stop;
-    cudaEventCreate(&total_start);
-    cudaEventCreate(&total_stop);
-
-    cudaEvent_t calculation_start, calculation_stop;
-    cudaEventCreate(&calculation_start);
-    cudaEventCreate(&calculation_stop);
-
-    cudaEventRecord(total_start, 0);
-
-    // Get output file
-    FILE* outputFile = fopen(argv[2], "w");
-    if(outputFile == NULL) {
-        printf("Error : cannot open file %s\n", argv[2]);
-        return 1;
-    }
-
-    // Get input file and its size
-    FILE* file = fopen(argv[1], "r");
-    if(file == NULL) {
-        printf("Error : cannot open file %s\n", argv[1]);
-        return 1;
-    }
-    fseek(file, 0, SEEK_END); // seek to end of file
-    long fileSizeInByte = ftell(file); // get current file pointer
-    fseek(file, 0, SEEK_SET); // seek back to beginning of file
-
-    // Get data and prepare blocks
-    int nbBlocks;
-
-    if(strcmp(argv[3], "encrypt") == 0) {
-        nbBlocks = fileSizeInByte / BLOCK_SIZE + 1;
-        // + 1 : 
-        //  - In case the file size is not a multiple of BLOCK_SIZE
-        //  - To store the padding size at the end
-    } else if(strcmp(argv[3], "decrypt") == 0) {
-        nbBlocks = fileSizeInByte / BLOCK_SIZE;
-    }
-
-    Aes128Block blocks = (Aes128Block)malloc(BLOCK_SIZE * nbBlocks);
-    int indexBlock = 0;
-    u_int8_t padding = 0;
-    while(!feof(file)) {
-        int indexByte = 0;
-        Aes128Block block = blocks + (indexBlock * BLOCK_SIZE);
-        while(indexByte < BLOCK_SIZE && !feof(file)) {
-            block[indexByte] = fgetc(file);
-            ++indexByte;
-        }
-        ++indexBlock;
-        if(indexByte == BLOCK_SIZE) {
-            padding = 16;
-        } else {
-            padding = BLOCK_SIZE - indexByte + 1;
-        }
-    }
-
-    Aes128Block d_blocks;
-    cudaMalloc(&d_blocks, BLOCK_SIZE * nbBlocks);
-
-    // Create constant memory
-    cudaMemcpyToSymbol(subBytesMatrix, &CPU_subBytesMatrix, 256 * sizeof(u_int8_t));
-    cudaMemcpyToSymbol(invSubBytesMatrix, &CPU_invSubBytesMatrix, 256 * sizeof(u_int8_t));
-    cudaMemcpyToSymbol(mixColumnsMatrix, &CPU_mixColumnsMatrix, 4 * 4 * sizeof(u_int8_t));
-    cudaMemcpyToSymbol(invMixColumnsMatrix, &CPU_invMixColumnsMatrix, 4 * 4 * sizeof(u_int8_t));
-
-    Aes128Key key = generateKey();
-
-    Aes128Key d_key;
-    cudaMalloc(&d_key, KEY_SIZE);
-    cudaMemcpy(d_key, key, KEY_SIZE, cudaMemcpyHostToDevice);
-
-    int nbCudaBlocks = nbBlocks;
-    int nbThreadsPerBlock = 4;
-    
-
-    if(strcmp(argv[3], "encrypt") == 0) {
-        // Fill the padding
-        for(int indexByte = BLOCK_SIZE * nbBlocks - padding; indexByte < BLOCK_SIZE * nbBlocks - 1; ++indexByte) {
-            blocks[indexByte] = 0;
-        }
-        blocks[BLOCK_SIZE * nbBlocks - 1] = padding;
-        padding = 0;
-
-        cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
-
-        cudaEventRecord(calculation_start, 0);
-
-        encrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks);
-    } else if(strcmp(argv[3], "decrypt") == 0) {
-        cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
-
-        cudaEventRecord(calculation_start, 0);
-
-        decrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks);
-    } else {
-        printf("Error : unknown command %s\n", argv[3]);
-        return 1;
-    }
-
-    // Stop the timer
-    cudaEventRecord(calculation_stop, 0);
-    cudaEventSynchronize(calculation_stop);
-
-    cudaMemcpy(blocks, d_blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyDeviceToHost);
-
-    if(strcmp(argv[3], "decrypt") == 0) {
-        // Get the padding size
-        padding = blocks[BLOCK_SIZE * nbBlocks - 1];
-    }
-
-    // Show CUDA errors
-    cudaError_t error = cudaGetLastError();
-    if(error != cudaSuccess) {
-        printf("CUDA error : %s\n", cudaGetErrorString(error));
+__host__ Aes128Key generateKey(char *keyHex) {
+    if (strlen(keyHex) != KEY_SIZE * 2) {
+        printf("Error : The key must be 16 bytes long (32 characters in hexadecimal)\n");
         exit(1);
     }
 
-    for(int indexBlock = 0; indexBlock < nbBlocks; ++indexBlock) {
-        Aes128Block block = blocks + (indexBlock * BLOCK_SIZE);
-        int blockLimit = BLOCK_SIZE;
-        if(indexBlock == nbBlocks - 1) {
-            blockLimit = BLOCK_SIZE - padding;
-        }
-        for(int indexByte = 0; indexByte < blockLimit; ++indexByte) {
-            fputc(block[indexByte], outputFile);
-        }
-    }
-
-    // Stop the timer
-    cudaEventRecord(total_stop, 0);
-    cudaEventSynchronize(total_stop);
-
-    // Display times
-    float elapsedTime;
-
-    cudaEventElapsedTime(&elapsedTime, total_start, total_stop);
-    printf("Execution (total time): %f ms\n", elapsedTime);
-
-    cudaEventElapsedTime(&elapsedTime, calculation_start, calculation_stop);
-    printf("Execution (calculation time): %f ms\n", elapsedTime);
-
-    cudaFree(d_blocks);
-    cudaFree(d_key);
-
-    destroyKey(key);
-
-    fclose(file);
-    fclose(outputFile);
+    return hex_to_byte(keyHex);
+}
+__host__ void destroyKey(Aes128Key key) {
+    free(key);
 }
