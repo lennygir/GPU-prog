@@ -2,7 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <time.h> 
+#include <time.h>
+
+#include "../../_utils/conversion_utils.h"
 
 #define BLOCK_SIZE 16
 #define KEY_SIZE 16
@@ -449,30 +451,8 @@ void destroyBlock(Aes128Block block) {
     free(block);
 }
 
-Aes128Key generateKey() {
-    Aes128Key key = malloc(KEY_SIZE);
-
-    key[0] = 0x2b;
-    key[4] = 0x7e;
-    key[8] = 0x15;
-    key[12] = 0x16;
-
-    key[1] = 0x28;
-    key[5] = 0xae;
-    key[9] = 0xd2;
-    key[13] = 0xa6;
-
-    key[2] = 0xab;
-    key[6] = 0xf7;
-    key[10] = 0x15;
-    key[14] = 0x88;
-
-    key[3] = 0x09;
-    key[7] = 0xcf;
-    key[11] = 0x4f;
-    key[15] = 0x3c;
-
-    return key;
+Aes128Key generateKey(char *keyHex, int keySize) {
+    return hex_to_byte(keyHex);
 }
 void destroyKey(Aes128Key key) {
     free(key);

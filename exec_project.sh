@@ -74,16 +74,15 @@ else
     extension="cu"
 fi
 
+# Build the project
 path_to_main="./${directory_of_algorithm[$algorithm]}/${directory_of_implementation[$implementation]}/main.${extension}"
-path_to_implementation=""
 if [ "$algorithm" == "aes" ]; then
-    path_to_implementation="./${directory_of_algorithm[$algorithm]}/${directory_of_implementation[$implementation]}/aes_core.${extension}"
+  $compiler -o project "./_utils/conversion_utils.${extension}" "$path_to_main"
 else
     path_to_implementation="./${directory_of_algorithm[$algorithm]}/${directory_of_implementation[$implementation]}/chacha20.${extension}"
+    $compiler -o project "./_utils/conversion_utils.${extension}" "$path_to_implementation" "$path_to_main"
 fi
-
-# Build the project
-$compiler -o project "./_utils/conversion_utils.${extension}" "$path_to_implementation" "$path_to_main"
+# Check if the build was successful
 if [ $? -ne 0 ]; then
     echo "Failed to build the project, check the error message above"
     exit 1
