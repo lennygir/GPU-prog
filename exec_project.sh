@@ -11,6 +11,7 @@ directory_of_implementation["k_in_k"]="impl_kernel_in_kernel"
 directory_of_implementation["streams"]="impl_naive_streams"
 directory_of_implementation["rcon"]="impl_RCON_upgrade"
 directory_of_implementation["parallel_op"]="impl_parallel_aes_operations"
+directory_of_implementation["shared"]="impl_shared_mem"
 
 # This script is used to execute one of the implementation of the project
 # The script takes the following arguments:
@@ -42,7 +43,7 @@ if [ "$algorithm" == "aes" ]; then
         algorithm_implementation_valid=1
     fi
 else
-    if [ "$implementation" == "c" ] || [ "$implementation" == "naive" ] || [ "$implementation" == "streams" ]; then
+    if [ "$implementation" == "c" ] || [ "$implementation" == "naive" ] || [ "$implementation" == "streams" ] || [ "$implementation" == "shared" ]; then
         algorithm_implementation_valid=1
     fi
 fi
@@ -63,19 +64,30 @@ input_file=$4
 output_file=$5
 key_hex=$6
 
-filename=""
 compiler=""
+extension=""
 if [ "$implementation" == "c" ]; then
-    filename="main.c"
     compiler="gcc"
+    extension="c"
 else
-    filename="main.cu"
-    compiler="nvcc"
+    compiler="nvcc -arch=compute_35 -rdc=true"
+    extension="cu"
 fi
 
-path_to_implementation="./${directory_of_algorithm[$algorithm]}/${directory_of_implementation[$implementation]}/${filename}"
+path_to_main="./${directory_of_algorithm[$algorithm]}/${directory_of_implementation[$implementation]}/main.${extension}"
+path_to_implementation=""
+if [ "$algorithm" == "aes" ]; then
+    path_to_implementation="./${directory_of_algorithm[$algorithm]}/${directory_of_implementation[$implementation]}/aes_core.${extension}"
+else
+    path_to_implementation="./${directory_of_algorithm[$algorithm]}/${directory_of_implementation[$implementation]}/chacha20.${extension}"
+fi
 
 # Build the project
-$compiler -o project $path_to_implementation
+$compiler -o project "./_utils/conversion_utils.${extension}" "$path_to_implementation" "$path_to_main"
+if [ $? -ne 0 ]; then
+    echo "Failed to build the project, check the error message above"
+    exit 1
+fi
+
 # Execute the project
 ./project "$operation" "$input_file" "$output_file" "$key_hex"

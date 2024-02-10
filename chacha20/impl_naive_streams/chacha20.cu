@@ -6,7 +6,7 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
-#include "chacha20_streams.cuh"
+#include "chacha20.cuh"
 #include "../../_utils/conversion_utils.cuh"
 
 #define NB_STREAMS 6
