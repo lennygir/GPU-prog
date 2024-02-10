@@ -40,7 +40,7 @@ if [ "$algorithm" == "aes" ]; then
         algorithm_implementation_valid=1
     fi
 else
-    if [ "$implementation" == "c" ] || [ "$implementation" == "naive" ] || [ "$implementation" == "k_in_k" ] || [ "$implementation" == "streams" ]; then
+    if [ "$implementation" == "c" ] || [ "$implementation" == "naive" ] || [ "$implementation" == "streams" ]; then
         algorithm_implementation_valid=1
     fi
 fi
