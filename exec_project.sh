@@ -1,5 +1,20 @@
 #!/bin/bash
 
+# Display the usage of the script if the user provides the -h or --help option
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+    echo "This script is used to execute one of the implementation of the project"
+    echo "The script takes the following arguments:"
+    echo "  \$1: the name of the algorithm - \"aes\" OR \"chacha\""
+    echo "  \$2: the name of the implementation - \"c\" OR \"naive\" OR \"k_in_k\" OR \"streams\" OR \"rcon\" OR \"parallel_op\" OR \"shared\""
+    echo "  \$3: \"encrypt\" or \"decrypt\""
+    echo "  \$4: the path to the input file"
+    echo "  \$5: the path to the output file"
+    echo "  \$6: the key in hex format (without spaces and the prefix \"0x\") - 32 characters for AES and 64 characters for ChaCha20"
+    echo ""
+    echo "Example: ./exec_project.sh aes c encrypt input.txt output.txt 2b7e151628aed2a6abf7158809cf4f3c"
+    exit 0
+fi
+
 echo "==> Initializing script data"
 
 declare -A directory_of_algorithm
@@ -14,15 +29,6 @@ directory_of_implementation["streams"]="impl_naive_streams"
 directory_of_implementation["rcon"]="impl_RCON_upgrade"
 directory_of_implementation["parallel_op"]="impl_parallel_aes_operations"
 directory_of_implementation["shared"]="impl_shared_mem"
-
-# This script is used to execute one of the implementation of the project
-# The script takes the following arguments:
-#   $1: the name of the algorithm - "aes" OR "chacha"
-#   $2: the name of the implementation - "c" OR "naive" OR "k_in_k" OR "streams" OR "rcon" OR "parallel_op"
-#   $3: "encrypt" or "decrypt"
-#   $4: the path to the input file
-#   $5: the path to the output file
-#   $6: the key in hex format
 
 echo "==> Checking the input parameters"
 

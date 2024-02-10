@@ -40,13 +40,14 @@ nvcc -arch=compute_35 -rdc=true ./<algo>/<impl>/main.cu -o main
 ```bash
 ./exec_project.sh <algo> <impl> <action> <input_file> <output_file> <key>
 ```
-- algo: aes or chacha
-- impl: "c" OR "naive" OR "k_in_k" OR "streams" OR "rcon" OR "parallel_op"
-- action: "encrypt" OR "decrypt"
-- input_file: path to the file to encrypt/decrypt
-- output_file: path to the output file
-- key: key to use for encryption/decryption
-  - This parameter isn't supported for AES implementation
+- **algo**: aes or chacha
+- **impl**: "c" OR "naive" OR "k_in_k" OR "streams" OR "rcon" OR "parallel_op" OR "shared"
+- **action**: "encrypt" OR "decrypt"
+- **input_file**: path to the file to encrypt/decrypt
+- **output_file**: path to the output file
+- **key**: key to use for encryption/decryption (without spaces and the prefix "0x")
+  - For AES - 32 characters
+  - For ChaCha - 64 characters
 
 ## Credits
 During this project we used different resources that explain algorithms and possible optimizations. You can find the 
