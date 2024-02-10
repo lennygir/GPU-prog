@@ -15,6 +15,6 @@
 #define ROTL32(v, n) ((v) << (n)) | ((v) >> (32 - (n)))
 #endif
 
-const uint8_t* hex_to_byte(const char* hex_str);
+uint8_t* hex_to_byte(const char* hex_str);
 
 #endif //CONVERSION_UTILS_H

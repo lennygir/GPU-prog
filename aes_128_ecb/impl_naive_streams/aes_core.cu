@@ -1,5 +1,7 @@
 #include <stdio.h>
 
+#include "../../_utils/conversion_utils.cuh"
+
 #define BLOCK_SIZE 16
 #define KEY_SIZE 16
 #define MAX_THREADS_PER_BLOCK 256
@@ -422,30 +424,13 @@ __host__ void destroyBlock(Aes128Block block) {
     free(block);
 }
 
-__host__ Aes128Key generateKey() {
-    Aes128Key key = (Aes128Key)malloc(KEY_SIZE);
+__host__ Aes128Key generateKey(char *keyHex) {
+    if (strlen(keyHex) != KEY_SIZE * 2) {
+        printf("Error : The key must be 16 bytes long (32 characters in hexadecimal)\n");
+        exit(1);
+    }
 
-    key[0] = 0x2b;
-    key[4] = 0x7e;
-    key[8] = 0x15;
-    key[12] = 0x16;
-
-    key[1] = 0x28;
-    key[5] = 0xae;
-    key[9] = 0xd2;
-    key[13] = 0xa6;
-
-    key[2] = 0xab;
-    key[6] = 0xf7;
-    key[10] = 0x15;
-    key[14] = 0x88;
-
-    key[3] = 0x09;
-    key[7] = 0xcf;
-    key[11] = 0x4f;
-    key[15] = 0x3c;
-
-    return key;
+    return hex_to_byte(keyHex);
 }
 __host__ void destroyKey(Aes128Key key) {
     free(key);

@@ -4,7 +4,7 @@
 
 #include "conversion_utils.cuh"
 
-const uint8_t* hex_to_byte(const char* hex)
+uint8_t* hex_to_byte(const char* hex)
 {
     size_t len = strlen(hex) / 2;
     uint8_t* byte = (uint8_t *) malloc(len);

@@ -451,7 +451,12 @@ void destroyBlock(Aes128Block block) {
     free(block);
 }
 
-Aes128Key generateKey(char *keyHex, int keySize) {
+Aes128Key generateKey(char *keyHex) {
+    if (strlen(keyHex) != KEY_SIZE * 2) {
+        printf("Error : The key must be 16 bytes long (32 characters in hexadecimal)\n");
+        exit(1);
+    }
+
     return hex_to_byte(keyHex);
 }
 void destroyKey(Aes128Key key) {

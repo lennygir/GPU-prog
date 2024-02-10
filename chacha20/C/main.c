@@ -19,6 +19,10 @@ int main(int argc, char* argv[]) {
     const char* output_path = argv[3];
 
     const char* key_hex = argv[4];
+    if (strlen(key_hex) != 64) {
+        fprintf(stderr, "Error: Key must be 32 bytes (64 hex characters)\n");
+        return 1;
+    }
     const uint8_t* key = hex_to_byte(key_hex);
 
     chacha20_process_file(input_path, output_path, key);

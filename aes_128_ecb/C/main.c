@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
     long fileSizeInByte = ftell(file); // get current file pointer
     fseek(file, 0, SEEK_SET); // seek back to beginning of file
 
-    Aes128Key key = generateKey(argv[4], KEY_SIZE);
+    Aes128Key key = generateKey(argv[4]);
 
     if(strcmp(argv[1], "encrypt") == 0) {
         while(!feof(file)) {

@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     cudaMemcpyToSymbol(mixColumnsMatrix, &CPU_mixColumnsMatrix, 4 * 4 * sizeof(u_int8_t));
     cudaMemcpyToSymbol(invMixColumnsMatrix, &CPU_invMixColumnsMatrix, 4 * 4 * sizeof(u_int8_t));
 
-    Aes128Key key = generateKey();
+    Aes128Key key = generateKey(argv[4]);
 
     Aes128Key d_key;
     cudaMalloc(&d_key, KEY_SIZE);

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "==> Initializing script data"
+
 declare -A directory_of_algorithm
 directory_of_algorithm["aes"]="aes_128_ecb"
 directory_of_algorithm["chacha"]="chacha20"
@@ -21,6 +23,8 @@ directory_of_implementation["shared"]="impl_shared_mem"
 #   $4: the path to the input file
 #   $5: the path to the output file
 #   $6: the key in hex format
+
+echo "==> Checking the input parameters"
 
 # Check if the number of arguments is correct
 if [ "$#" -ne 6 ]; then
@@ -75,6 +79,7 @@ else
 fi
 
 # Build the project
+echo "==> Building the project"
 path_to_main="./${directory_of_algorithm[$algorithm]}/${directory_of_implementation[$implementation]}/main.${extension}"
 if [ "$algorithm" == "aes" ]; then
   $compiler -o project "./_utils/conversion_utils.${extension}" "$path_to_main"
@@ -89,4 +94,5 @@ if [ $? -ne 0 ]; then
 fi
 
 # Execute the project
+echo "==> Executing the project"
 ./project "$operation" "$input_file" "$output_file" "$key_hex"
