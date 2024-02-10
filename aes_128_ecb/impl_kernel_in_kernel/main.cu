@@ -2,8 +2,8 @@
 #include "aes_core.cu"
 
 int main(int argc, char** argv) {
-    if(argc != 4) {
-        printf("Usage : ./main <input file> <output file> <encrypt | decrypt>\n");
+    if (argc != 5) {
+        printf("Usage : ./main <encrypt | decrypt> <input file> <output file> <key>\n");
         return 1;
     }
 
@@ -18,16 +18,16 @@ int main(int argc, char** argv) {
     cudaEventRecord(total_start, 0);
 
     // Get output file
-    FILE* outputFile = fopen(argv[2], "w");
+    FILE* outputFile = fopen(argv[3], "w");
     if(outputFile == NULL) {
-        printf("Error : cannot open file %s\n", argv[2]);
+        printf("Error : cannot open file %s\n", argv[3]);
         return 1;
     }
 
     // Get input file and its size
-    FILE* file = fopen(argv[1], "r");
+    FILE* file = fopen(argv[2], "r");
     if(file == NULL) {
-        printf("Error : cannot open file %s\n", argv[1]);
+        printf("Error : cannot open file %s\n", argv[2]);
         return 1;
     }
     fseek(file, 0, SEEK_END); // seek to end of file
@@ -37,12 +37,12 @@ int main(int argc, char** argv) {
     // Get data and prepare blocks
     int nbBlocks;
 
-    if(strcmp(argv[3], "encrypt") == 0) {
+    if(strcmp(argv[1], "encrypt") == 0) {
         nbBlocks = fileSizeInByte / BLOCK_SIZE + 1;
         // + 1 : 
         //  - In case the file size is not a multiple of BLOCK_SIZE
         //  - To store the padding size at the end
-    } else if(strcmp(argv[3], "decrypt") == 0) {
+    } else if(strcmp(argv[1], "decrypt") == 0) {
         nbBlocks = fileSizeInByte / BLOCK_SIZE;
     }
 
@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
         nbThreadsPerBlock = 512;
     }
 
-    if(strcmp(argv[3], "encrypt") == 0) {
+    if(strcmp(argv[1], "encrypt") == 0) {
         // Fill the padding
         for(int indexByte = BLOCK_SIZE * nbBlocks - padding; indexByte < BLOCK_SIZE * nbBlocks - 1; ++indexByte) {
             blocks[indexByte] = 0;
@@ -103,14 +103,14 @@ int main(int argc, char** argv) {
         cudaEventRecord(calculation_start, 0);
 
         encrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks);
-    } else if(strcmp(argv[3], "decrypt") == 0) {
+    } else if(strcmp(argv[1], "decrypt") == 0) {
         cudaMemcpy(d_blocks, blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyHostToDevice);
         
         cudaEventRecord(calculation_start, 0);
         
         decrypt<<<nbCudaBlocks, nbThreadsPerBlock>>>(d_blocks, d_key, nbBlocks);
     } else {
-        printf("Error : unknown command %s\n", argv[3]);
+        printf("Error : unknown command %s\n", argv[1]);
         return 1;
     }
 
@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
 
     cudaMemcpy(blocks, d_blocks, BLOCK_SIZE * nbBlocks, cudaMemcpyDeviceToHost);
 
-    if(strcmp(argv[3], "decrypt") == 0) {
+    if(strcmp(argv[1], "decrypt") == 0) {
         // Get the padding size
         padding = blocks[BLOCK_SIZE * nbBlocks - 1];
     }

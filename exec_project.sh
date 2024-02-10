@@ -1,14 +1,16 @@
 #!/bin/bash
 
+declare -A directory_of_algorithm
 directory_of_algorithm["aes"]="aes_128_ecb"
 directory_of_algorithm["chacha"]="chacha20"
 
+declare -A directory_of_implementation
 directory_of_implementation["c"]="C"
 directory_of_implementation["naive"]="impl_naive"
 directory_of_implementation["k_in_k"]="impl_kernel_in_kernel"
 directory_of_implementation["streams"]="impl_naive_streams"
 directory_of_implementation["rcon"]="impl_RCON_upgrade"
-directory_of_implementation["parallel_op"]="impl_parallel_operations"
+directory_of_implementation["parallel_op"]="impl_parallel_aes_operations"
 
 # This script is used to execute one of the implementation of the project
 # The script takes the following arguments:
